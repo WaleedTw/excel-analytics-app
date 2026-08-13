@@ -1,0 +1,26 @@
+# المعمارية
+
+## سبب الاختيار
+
+اختير LangGraph لأنه يدير حالة طويلة متعددة المراحل مع conditional edges وcheckpoint وinterrupt/resume. استخدام LangChain وحده مناسب للاستدعاءات والأدوات لكنه لا يقدم هنا وضوح الرسم والحالة المتوقفة بنفس الصرامة. لم يُستخدم CrewAI لأن المشكلة تحتاج محللًا واحدًا وسياقًا موحدًا لا فريق وكلاء؛ تعدد الوكلاء يزيد التنسيق ولا يضيف قيمة حسابية.
+
+```mermaid
+flowchart LR
+  U[واجهة Next.js RTL] --> A[FastAPI]
+  A --> G[LangGraph: وكيل واحد ذو حالة]
+  G --> X[openpyxl + pandas]
+  G --> D[DuckDB]
+  G --> M[Ollama llama3.2 أو Mock للاختبارات]
+  G --> S[(SQLite / PostgreSQL)]
+  G --> J[Inline / Celery + Redis]
+  G --> P[DashboardSpec Pydantic]
+  P --> U
+```
+
+## المكونات
+
+- الواجهة تتحقق من JSON عبر Zod وتعرض مواصفة عامة؛ لا تولد صفحة برمجية لكل ملف.
+- FastAPI يملك حدود الرفع ودورة التحليل.
+- LangGraph هو منسق سير العمل الوحيد، وخطة Ollama المتحققة ترتب المقاييس والأبعاد واستراتيجيات الرسوم قبل التنفيذ.
+- DuckDB وPython هما منفذا الحسابات الحتمية.
+- Pydantic يمنع أي KPI أو رسم يشير إلى نتيجة غير مسجلة.
