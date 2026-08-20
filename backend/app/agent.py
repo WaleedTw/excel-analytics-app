@@ -27,25 +27,20 @@ SYSTEM_PROMPT = """أنت عقدة تخطيط دلالي داخل وكيل LangG
 4. لا تطلب صفوف الملف أو قيمه، ولا تستنتج بيانات شخصية.
 5. أعد JSON فقط مطابقًا تمامًا للمخطط المرسل.
 6. اكتب الهدف وبيان الخصوصية بالعربية، واختر استراتيجيات رسوم من القيم المسموحة فقط.
-7. لا تعِد تصنيف الأعمدة: ضع كل اسم فقط في القائمة المطابقة لدوره المحلي المرسل
-   داخل allowed_columns_by_role. مثال: عمود السنة المصنف dimension لا يوضع في dates.
 
 الحسابات ستنفذ لاحقًا بواسطة Python وDuckDB، ويجب ألا تفوضها لنفسك."""
-
-PLAN_FIELDS_BY_ROLE = {
-    "measure": "measures",
-    "dimension": "dimensions",
-    "date": "dates",
-}
-
-GROQ_STRICT_SCHEMA_MODELS = {
-    "openai/gpt-oss-20b",
-    "openai/gpt-oss-120b",
-}
 
 
 class LLMProviderError(RuntimeError):
     """A safe, user-facing failure raised by the configured LLM provider."""
+
+
+PLAN_FIELDS = ("measures", "dimensions", "dates")
+ROLE_TO_PLAN_FIELD = {
+    "measure": "measures",
+    "dimension": "dimensions",
+    "date": "dates",
+}
 
 
 def _mock_plan(columns: list[dict[str, Any]]) -> AnalysisPlanContent:
@@ -67,118 +62,63 @@ def _safe_column_metadata(columns: list[dict[str, Any]]) -> list[dict[str, Any]]
     return [{key: column.get(key) for key in allowed} for column in columns]
 
 
-def _allowed_columns_by_role(columns: list[dict[str, Any]]) -> dict[str, list[str]]:
-    """Return the local semantic catalog that the model is not allowed to override."""
-    return {
-        field: [
-            str(column["name"])
-            for column in columns
-            if column.get("semantic_role") == role
-        ]
-        for role, field in PLAN_FIELDS_BY_ROLE.items()
-    }
-
-
-def _analysis_plan_schema(columns: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build a role-aware schema so supported providers constrain column choices."""
-    schema = AnalysisPlanContent.model_json_schema()
-    allowed = _allowed_columns_by_role(columns)
-    properties = schema.get("properties", {})
-    for field, names in allowed.items():
-        field_schema = properties.get(field, {})
-        field_schema["uniqueItems"] = True
-        field_schema["description"] = (
-            "أسماء الأعمدة المسموحة لهذا الدور فقط. لا تنقل عمودًا من دور آخر."
-        )
-        if names:
-            field_schema["items"] = {"type": "string", "enum": names}
-        else:
-            field_schema["items"] = {"type": "string"}
-            field_schema["maxItems"] = 0
-    # Groq strict structured outputs requires every property to be required and
-    # disallows unspecified object keys. Defaults still remain useful locally.
-    schema["required"] = list(properties)
-    schema["additionalProperties"] = False
-    return schema
-
-
-def _validate_and_canonicalize_plan_columns(
+def _normalize_plan_columns(
     plan: AnalysisPlanContent,
     columns: list[dict[str, Any]],
 ) -> AnalysisPlanContent:
-    """Reject invented names, then restore every real column to its local role.
+    """Validate column existence, then trust the local profiler for semantic roles.
 
-    The LLM may call ``Year`` a date even though Bayyinah deliberately models a
-    discrete year as a dimension. That is a harmless semantic disagreement, not
-    a security violation. Local inference remains authoritative; the model only
-    influences ordering within each already-approved role.
+    An LLM may reasonably place a temporal business dimension such as ``Year``
+    under ``dates`` even when the deterministic profiler classifies it as a
+    dimension. That is not a hallucination and must not abort the analysis.
+    Truly unknown names are still rejected, while known names are moved to the
+    profiler-approved bucket. Identifiers and unresolved columns are ignored.
     """
-    allowed = _allowed_columns_by_role(columns)
-    known = {
-        str(column["name"])
-        for column in columns
-        if column.get("semantic_role") in PLAN_FIELDS_BY_ROLE
+    role_by_name = {column["name"]: column["semantic_role"] for column in columns}
+    supplied_names = {
+        name
+        for field in PLAN_FIELDS
+        for name in getattr(plan, field)
     }
-    supplied_order: list[str] = []
-    for field in ("measures", "dimensions", "dates"):
-        for name in getattr(plan, field):
-            if name not in supplied_order:
-                supplied_order.append(name)
-
-    unknown = set(supplied_order) - known
+    unknown = supplied_names - set(role_by_name)
     if unknown:
         raise LLMProviderError(
-            "رفض التحقق خطة النموذج لأنها أشارت إلى أسماء أعمدة غير موجودة في الملف: "
-            f"{', '.join(sorted(unknown))}."
+            f"رفض التحقق خطة النموذج لأنها أشارت إلى أعمدة غير مسموحة: {', '.join(sorted(unknown))}."
         )
 
-    canonical: dict[str, list[str]] = {}
-    for field, local_names in allowed.items():
-        preferred = [name for name in supplied_order if name in local_names]
-        canonical[field] = preferred + [name for name in local_names if name not in preferred]
-    return plan.model_copy(update=canonical)
+    normalized: dict[str, list[str]] = {field: [] for field in PLAN_FIELDS}
+    for field in PLAN_FIELDS:
+        for name in getattr(plan, field):
+            target_field = ROLE_TO_PLAN_FIELD.get(role_by_name[name])
+            if target_field and name not in normalized[target_field]:
+                normalized[target_field].append(name)
+    return plan.model_copy(update=normalized)
 
 
-def _groq_response_format(schema: dict[str, Any]) -> dict[str, Any]:
-    if GROQ_MODEL in GROQ_STRICT_SCHEMA_MODELS:
-        return {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "bayyinah_analysis_plan",
-                "strict": True,
-                "schema": schema,
+def _groq_analysis_plan_schema() -> dict[str, Any]:
+    """Return a Groq strict-mode compatible schema with every field required."""
+    return {
+        "type": "object",
+        "properties": {
+            "objective": {"type": "string"},
+            "measures": {"type": "array", "items": {"type": "string"}},
+            "dimensions": {"type": "array", "items": {"type": "string"}},
+            "dates": {"type": "array", "items": {"type": "string"}},
+            "chart_strategy": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["trend", "category_comparison", "share", "distribution"],
+                },
             },
-        }
-    return {"type": "json_object"}
-
-
-def _create_groq_plan_completion(
-    client: Any,
-    messages: list[dict[str, str]],
-    schema: dict[str, Any],
-) -> Any:
-    """Use strict output when possible, with a safe compatibility fallback.
-
-    Some Groq account/SDK combinations can reject a valid strict-schema request
-    with HTTP 400. A single retry in JSON Object Mode is safe because the result
-    is still parsed by Pydantic, checked for invented names, and canonicalized to
-    Bayyinah's locally inferred semantic roles before any calculation runs.
-    """
-    response_format = _groq_response_format(schema)
-    request = {
-        "model": GROQ_MODEL,
-        "messages": messages,
-        "response_format": response_format,
-        "temperature": 0.1,
-        "max_completion_tokens": 800,
+            "privacy": {"type": "string"},
+        },
+        "required": [
+            "objective", "measures", "dimensions", "dates",
+            "chart_strategy", "privacy",
+        ],
+        "additionalProperties": False,
     }
-    try:
-        return client.chat.completions.create(**request)
-    except Exception as exc:
-        if response_format.get("type") != "json_schema" or getattr(exc, "status_code", None) != 400:
-            raise
-        request["response_format"] = {"type": "json_object"}
-        return client.chat.completions.create(**request)
 
 
 def _ollama_plan(columns: list[dict[str, Any]], quality: dict[str, Any]) -> AnalysisPlanContent:
@@ -187,10 +127,9 @@ def _ollama_plan(columns: list[dict[str, Any]], quality: dict[str, Any]) -> Anal
     except ImportError as exc:
         raise LLMProviderError("تعذر تحميل عميل Ollama. أعد تشغيل scripts\\run-backend.ps1 لتثبيت كل المتطلبات.") from exc
 
-    schema = _analysis_plan_schema(columns)
+    schema = AnalysisPlanContent.model_json_schema()
     payload = {
         "column_metadata": _safe_column_metadata(columns),
-        "allowed_columns_by_role": _allowed_columns_by_role(columns),
         "quality_summary": quality,
         "allowed_chart_strategies": ["trend", "category_comparison", "share", "distribution"],
         "output_schema": schema,
@@ -208,7 +147,7 @@ def _ollama_plan(columns: list[dict[str, Any]], quality: dict[str, Any]) -> Anal
             keep_alive="5m",
         )
         plan = AnalysisPlanContent.model_validate_json(response.message.content)
-        return _validate_and_canonicalize_plan_columns(plan, columns)
+        return _normalize_plan_columns(plan, columns)
     except LLMProviderError:
         raise
     except (ValidationError, ValueError, TypeError) as exc:
@@ -228,33 +167,46 @@ def _groq_plan(columns: list[dict[str, Any]], quality: dict[str, Any]) -> Analys
     except ImportError as exc:
         raise LLMProviderError("تعذر تحميل عميل Groq. أعد تثبيت متطلبات الباكند.") from exc
 
-    schema = _analysis_plan_schema(columns)
+    schema = _groq_analysis_plan_schema()
     payload = {
         "column_metadata": _safe_column_metadata(columns),
-        "allowed_columns_by_role": _allowed_columns_by_role(columns),
         "quality_summary": quality,
         "allowed_chart_strategies": ["trend", "category_comparison", "share", "distribution"],
         "output_schema": schema,
     }
     try:
-        client = Groq(
+        response_format: dict[str, Any]
+        if GROQ_MODEL.startswith("openai/gpt-oss-"):
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "analysis_plan",
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
+        else:
+            response_format = {"type": "json_object"}
+
+        response = Groq(
             api_key=GROQ_API_KEY,
             timeout=GROQ_TIMEOUT_SECONDS,
             max_retries=2,
-        )
-        response = _create_groq_plan_completion(
-            client,
-            [
+        ).chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
-            schema,
+            response_format=response_format,
+            temperature=0,
+            max_completion_tokens=800,
         )
         content = response.choices[0].message.content
         if not content:
             raise LLMProviderError("لم يُعد Groq خطة تحليل.")
         plan = AnalysisPlanContent.model_validate_json(content)
-        return _validate_and_canonicalize_plan_columns(plan, columns)
+        return _normalize_plan_columns(plan, columns)
     except LLMProviderError:
         raise
     except (ValidationError, ValueError, TypeError) as exc:
@@ -266,13 +218,22 @@ def _groq_plan(columns: list[dict[str, Any]], quality: dict[str, Any]) -> Analys
 
 
 def create_analysis_plan(columns: list[dict[str, Any]], quality: dict[str, Any]) -> dict[str, Any]:
-    if LLM_PROVIDER == "mock":
-        plan, model = _mock_plan(columns), "deterministic-test-double"
-    elif LLM_PROVIDER == "groq":
-        plan, model = _groq_plan(columns, quality), GROQ_MODEL
-    else:
-        plan, model = _ollama_plan(columns, quality), OLLAMA_MODEL
-    return {"mode": LLM_PROVIDER, "model": model, **plan.model_dump()}
+    mode = LLM_PROVIDER
+    try:
+        if mode == "mock":
+            plan, model = _mock_plan(columns), "deterministic-test-double"
+        elif mode == "groq":
+            plan, model = _groq_plan(columns, quality), GROQ_MODEL
+        else:
+            plan, model = _ollama_plan(columns, quality), OLLAMA_MODEL
+    except LLMProviderError:
+        # The model only prioritizes semantic work; all calculations are local.
+        # Therefore an unavailable or malformed model response must not make a
+        # valid workbook unanalyzable.
+        plan = _mock_plan(columns)
+        model = f"deterministic-fallback:{mode}"
+        mode = "mock"
+    return {"mode": mode, "model": model, **plan.model_dump()}
 
 
 def _question_context(dashboard: DashboardSpec) -> dict[str, Any]:
