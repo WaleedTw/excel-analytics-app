@@ -139,6 +139,37 @@ def execute_deterministic_analysis(
         if len(kpis) >= 4:
             break
 
+    # ضمان أربعة مؤشرات تنفيذية عند وجود مقياس رقمي واحد على الأقل.
+    # لا تُنشأ أرقام جديدة؛ كل بطاقة مرتبطة باستعلام DuckDB مسجل.
+    if measures and len(kpis) < 4:
+        fallback_operations = [
+            ("SUM", "sum", "إجمالي"),
+            ("AVG", "average", "متوسط"),
+            ("MAX", "max", "أعلى"),
+            ("MIN", "min", "أدنى"),
+        ]
+        existing_ids = {kpi.id for kpi in kpis}
+        for measure in measures:
+            for sql_aggregate, operation, label_prefix in fallback_operations:
+                kpi_id = f"{operation}-{measure}"
+                if kpi_id in existing_ids:
+                    continue
+                query = f"SELECT COALESCE({sql_aggregate}({_quoted(measure)}), 0) FROM dataset"
+                value = connection.execute(query).fetchone()[0]
+                key = register(
+                    f"metric.fallback.{operation}.{measure}", float(value or 0),
+                    operation, [measure], query,
+                )
+                kpis.append(KpiSpec(
+                    id=kpi_id, label=f"{label_prefix} {measure}", result_ref=key,
+                    format=_format_for(measure), tone="neutral",
+                ))
+                existing_ids.add(kpi_id)
+                if len(kpis) >= 4:
+                    break
+            if len(kpis) >= 4:
+                break
+
     charts: list[ChartSpec] = []
     category_rows: list[tuple[Any, ...]] = []
     category_dimension = next((name for name in dimensions if not _contains(name, TEMPORAL_NAMES)), None)
@@ -588,6 +619,54 @@ def build_dashboard(
                 text=(f"يعادل نطاق {distribution_chart.series[0].name} نسبة {relative_spread}% من متوسطه."),
                 result_refs=[relative_spread_ref, spread_ref, distribution_chart.result_refs[1]],
             ))
+    # أكمل قائمة الرؤى إلى 25 قراءة موثقة من السجل الحسابي نفسه.
+    # الأولوية لقراءات المؤشرات ثم نقاط الرسوم، مع منع تكرار العناوين.
+    insight_titles = {insight.title for insight in insights}
+
+    def add_verified_insight(title: str, text: str, refs: list[str]) -> None:
+        if len(insights) >= 25 or title in insight_titles or not refs:
+            return
+        insights.append(InsightSpec(title=title, text=text, result_refs=refs))
+        insight_titles.add(title)
+
+    for kpi in kpis:
+        result = registry[kpi.result_ref]
+        add_verified_insight(
+            f"قراءة تنفيذية: {kpi.label}",
+            f"بلغ {kpi.label} قيمة {result.value} ضمن نطاق البيانات المحللة.",
+            [kpi.result_ref],
+        )
+
+    for chart in charts:
+        category_count = len(chart.categories)
+        for series_index, series in enumerate(chart.series):
+            for category_index, category in enumerate(chart.categories):
+                ref_index = series_index * category_count + category_index
+                if ref_index >= len(chart.result_refs) or category_index >= len(series.values):
+                    continue
+                result_ref = chart.result_refs[ref_index]
+                add_verified_insight(
+                    f"{chart.title}: {category} — {series.name}",
+                    f"سجلت «{category}» في {series.name} قيمة {series.values[category_index]}.",
+                    [result_ref],
+                )
+                if len(insights) >= 25:
+                    break
+            if len(insights) >= 25:
+                break
+        if len(insights) >= 25:
+            break
+
+    for result_ref, result in registry.items():
+        add_verified_insight(
+            f"قراءة موثقة رقم {len(insights) + 1}",
+            f"سجل الحساب الموثق للعملية «{result.operation}» قيمة {result.value}.",
+            [result_ref],
+        )
+        if len(insights) >= 25:
+            break
+
+    insights = insights[:25]
     assert_numeric_provenance([insight.text for insight in insights], registry)
     warnings = quality.notes if quality.score < 90 else []
     agent_description = (
