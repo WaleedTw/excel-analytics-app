@@ -15,7 +15,6 @@ from app.excel_service import (
 )
 from app.schemas import DashboardSpec, QualityReport
 from app.state import AnalysisState
-from app.storage import save_analysis_record
 
 DashboardBuilder = Callable[[Any, list[dict[str, Any]], QualityReport, str, dict[str, Any] | None], DashboardSpec | dict[str, Any]]
 
@@ -82,7 +81,7 @@ def build_analysis_graph(
     def create_analysis_plan(state: AnalysisState) -> dict[str, Any]:
         try:
             plan = llm_analysis_plan(state["columns"], state["quality"])
-            return {"analysis_plan": plan, "stage": "create_analysis_plan", "progress": 62, "trace": [f"أُنشئت خطة التحليل عبر {plan['mode']} ({plan['model']}) دون تفويض الحسابات للنموذج."]}
+            return {"analysis_plan": plan, "stage": "create_analysis_plan", "progress": 62, "trace": ["أُنشئت خطة التحليل الدلالية دون تفويض الحسابات للنموذج."]}
         except LLMProviderError as exc:
             return {
                 "status": "failed", "error": str(exc), "stage": "create_analysis_plan",
@@ -120,9 +119,10 @@ def build_analysis_graph(
         return {"stage": "generate_insights", "progress": 94, "trace": ["تمت صياغة الرؤى العربية من نتائج محسوبة وموثقة فقط."]}
 
     def save_analysis(state: AnalysisState) -> dict[str, Any]:
-        update = {"status": "completed", "stage": "save_analysis", "progress": 100, "trace": ["حُفظ التحليل محليًا وأصبح جاهزًا لإعادة الفتح."]}
-        save_analysis_record(state["analysis_id"], {**state, **update, "trace": state.get("trace", []) + update["trace"]})
-        return update
+        return {
+            "status": "completed", "stage": "save_analysis", "progress": 100,
+            "trace": ["اكتمل إعداد النتيجة للجلسة الحالية دون الاحتفاظ بملف Excel."],
+        }
 
     def fallback_analysis(state: AnalysisState) -> dict[str, Any]:
         try:
@@ -132,7 +132,6 @@ def build_analysis_graph(
                 state["sheet_name"], state.get("analysis_plan"),
             )
             update = {"dashboard": dashboard.model_dump(mode="json"), "status": "completed_with_fallback", "stage": "fallback_analysis", "progress": 100, "trace": ["بلغت المحاولات حدها؛ استُخدم مسار التحليل المحلي المحافظ."]}
-            save_analysis_record(state["analysis_id"], {**state, **update, "trace": state.get("trace", []) + update["trace"]})
             return update
         except Exception:
             return {"status": "failed", "stage": "fallback_analysis", "progress": 100, "error": "تعذر إنشاء لوحة آمنة بعد استنفاد المحاولات.", "trace": ["فشل مسار fallback المحافظ."]}

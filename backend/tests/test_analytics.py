@@ -29,7 +29,7 @@ def test_dashboard_pydantic_schema_is_valid():
     assert DashboardSpec.model_validate(dashboard)
     assert all(kpi.result_ref in dashboard.computed_results for kpi in dashboard.kpis)
     assert len(dashboard.tables[0].rows) == len(frame)
-    assert len(dashboard.detailed_insights) >= 10
+    assert len(dashboard.detailed_insights) >= 20
     assert "quality.completeness" in dashboard.computed_results
     assert dashboard.dimensions
     assert dashboard.measures

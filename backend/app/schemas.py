@@ -114,7 +114,7 @@ class DashboardSpec(BaseModel):
 
     title: str = Field(min_length=3)
     description: str = Field(min_length=10)
-    kpis: list[KpiSpec] = Field(min_length=1)
+    kpis: list[KpiSpec] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(min_length=1)
     tables: list[TableSpec] = Field(min_length=1)
     filters: list[FilterSpec] = Field(default_factory=list)
@@ -151,9 +151,18 @@ class ClarificationAnswer(BaseModel):
     mappings: dict[str, str] = Field(min_length=1)
 
 
+class AnalysisQuestion(BaseModel):
+    question: str = Field(min_length=2, max_length=500)
+
+
+class AnalysisAnswer(BaseModel):
+    answer: str = Field(min_length=2)
+    sources: list[str] = Field(default_factory=list)
+
+
 class AnalysisResponse(BaseModel):
     analysis_id: str
-    status: Literal["waiting_for_clarification", "completed", "completed_with_fallback", "failed"]
+    status: Literal["queued", "running", "waiting_for_clarification", "completed", "completed_with_fallback", "failed"]
     stage: str
     progress: int = Field(ge=0, le=100)
     ambiguity: dict[str, Any] | None = None
@@ -180,4 +189,4 @@ class HealthResponse(BaseModel):
     llm_ready: bool
     detail: str
     database: Literal["sqlite", "postgresql"]
-    jobs: Literal["inline", "celery"]
+    jobs: Literal["inline", "background", "celery"]

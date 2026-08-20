@@ -4,7 +4,7 @@ export const sheetSchema = z.object({ name: z.string(), rows: z.number(), column
 export const healthSchema = z.object({
   status: z.enum(["ok", "degraded"]), service: z.literal("bayyinah-backend"),
   mode: z.enum(["mock", "ollama", "groq"]), model: z.string(), llm_ready: z.boolean(), detail: z.string(),
-  database: z.enum(["sqlite", "postgresql"]), jobs: z.enum(["inline", "celery"]),
+  database: z.enum(["sqlite", "postgresql"]), jobs: z.enum(["inline", "background", "celery"]),
 });
 export const workbookSchema = z.object({
   file_id: z.string(), original_name: z.string(), safe_name: z.string(), size_bytes: z.number(),
@@ -33,7 +33,7 @@ export const previewSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())),
 });
 export const analysisSchema = z.object({
-  analysis_id: z.string(), status: z.enum(["waiting_for_clarification", "completed", "completed_with_fallback", "failed"]),
+  analysis_id: z.string(), status: z.enum(["queued", "running", "waiting_for_clarification", "completed", "completed_with_fallback", "failed"]),
   stage: z.string(), progress: z.number(), ambiguity: z.record(z.string(), z.unknown()).nullable(),
   analysis_plan: z.object({
     mode: z.enum(["mock", "ollama", "groq"]), model: z.string(), objective: z.string(),
@@ -47,16 +47,11 @@ export const analysisSchema = z.object({
     score: z.number(), notes: z.array(z.string()),
   }).nullable(), trace: z.array(z.string()), error: z.string().nullable(),
 });
-
-export const analysisSummarySchema = z.object({
-  id: z.string(), file_id: z.string(), sheet_name: z.string(),
-  status: z.string(), created_at: z.string(), original_name: z.string(),
-});
-export const analysisListSchema = z.array(analysisSummarySchema);
+export const analysisAnswerSchema = z.object({ answer: z.string(), sources: z.array(z.string()) });
 
 export type Workbook = z.infer<typeof workbookSchema>;
 export type Health = z.infer<typeof healthSchema>;
 export type Preview = z.infer<typeof previewSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
-export type AnalysisSummary = z.infer<typeof analysisSummarySchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
+export type AnalysisAnswer = z.infer<typeof analysisAnswerSchema>;

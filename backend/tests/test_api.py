@@ -1,7 +1,8 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.service import AnalysisService
 
 
 def test_health_endpoint():
@@ -22,9 +23,22 @@ def test_full_sample_api_journey():
         assert preview.status_code == 200
         analysis = client.post("/api/v1/analyses", json={"file_id": workbook["file_id"], "sheet_name": "المبيعات", "max_iterations": 3})
         assert analysis.status_code == 200
-        assert analysis.json()["status"] == "completed"
-        assert analysis.json()["analysis_plan"]["mode"] == "mock"
-        assert len(analysis.json()["dashboard"]["charts"]) >= 4
-        restored = AnalysisService().get(analysis.json()["analysis_id"])
-        assert restored.status == "completed"
-        assert restored.dashboard is not None
+        assert analysis.json()["status"] in {"queued", "running"}
+
+        analysis_id = analysis.json()["analysis_id"]
+        result = analysis.json()
+        for _ in range(100):
+            result = client.get(f"/api/v1/analyses/{analysis_id}").json()
+            if result["status"] not in {"queued", "running"}:
+                break
+            time.sleep(0.02)
+
+        assert result["status"] == "completed"
+        assert result["analysis_plan"]["mode"] == "mock"
+        assert len(result["dashboard"]["charts"]) >= 4
+        assert all(kpi["id"] != "quality" for kpi in result["dashboard"]["kpis"])
+        assert len(result["dashboard"]["kpis"]) == 4
+        answer = client.post(f"/api/v1/analyses/{analysis_id}/ask", json={"question": "ما أبرز نتيجة؟"})
+        assert answer.status_code == 200
+        assert answer.json()["answer"]
+        assert client.get(f"/api/v1/files/{workbook['file_id']}").status_code == 404

@@ -106,14 +106,10 @@ def execute_deterministic_analysis(
     dimensions = _ordered_names(available_dimensions, plan.get("dimensions"))
     dates = _ordered_names(available_dates, plan.get("dates"))
 
-    kpis = [
-        KpiSpec(id="rows", label="إجمالي السجلات", result_ref="rows.total", format="number", tone="primary"),
-        KpiSpec(
-            id="quality", label="درجة جودة البيانات", result_ref="quality.score", format="number",
-            tone="positive" if quality.score >= 80 else "warning",
-        ),
-    ]
-    for measure in measures[:3]:
+    # جودة البيانات وعدد السجلات لهما أقسام مستقلة في الواجهة، لذلك لا
+    # نكررهما داخل مؤشرات الأداء التنفيذية.
+    kpis: list[KpiSpec] = []
+    for measure in measures[:4]:
         sql_aggregate, operation, label_prefix = _aggregate(measure)
         query = f"SELECT COALESCE({sql_aggregate}({_quoted(measure)}), 0) FROM dataset"
         value = connection.execute(query).fetchone()[0]
@@ -123,6 +119,25 @@ def execute_deterministic_analysis(
             id=f"metric-{measure}", label=f"{label_prefix} {measure}", result_ref=key,
             format=_format_for(measure), tone="neutral",
         ))
+
+    # أكمل الصف إلى أربعة مؤشرات مفيدة عند توفر مقياس رقمي، من دون اختراع بيانات.
+    extra_operations = [("AVG", "average", "متوسط"), ("MAX", "max", "أعلى"), ("MIN", "min", "أدنى")]
+    for measure in measures:
+        primary_operation = _aggregate(measure)[1]
+        for sql_aggregate, operation, label_prefix in extra_operations:
+            if len(kpis) >= 4:
+                break
+            if operation == primary_operation:
+                continue
+            query = f"SELECT COALESCE({sql_aggregate}({_quoted(measure)}), 0) FROM dataset"
+            value = connection.execute(query).fetchone()[0]
+            key = register(f"metric.{operation}.{measure}", float(value or 0), operation, [measure], query)
+            kpis.append(KpiSpec(
+                id=f"{operation}-{measure}", label=f"{label_prefix} {measure}", result_ref=key,
+                format=_format_for(measure), tone="positive" if operation == "average" else "neutral",
+            ))
+        if len(kpis) >= 4:
+            break
 
     charts: list[ChartSpec] = []
     category_rows: list[tuple[Any, ...]] = []
@@ -188,22 +203,23 @@ def execute_deterministic_analysis(
         trend_rows = connection.execute(query).fetchall()
         offset = len(time_columns)
         trend_series: list[ChartSeries] = []
-        trend_refs: list[str] = []
+        trend_refs_by_measure: list[list[str]] = []
         for measure_index, measure in enumerate(chart_measures):
             values = [float(row[offset + measure_index] or 0) for row in trend_rows]
             operation = _aggregate(measure)[1]
+            refs: list[str] = []
             for row_index, value in enumerate(values):
-                trend_refs.append(register(
+                refs.append(register(
                     f"chart.trend.{measure_index}.{row_index}", value,
                     f"period_{operation}", [*time_columns, measure], query,
                 ))
             trend_series.append(ChartSeries(name=measure, values=values))
+            trend_refs_by_measure.append(refs)
         charts.append(ChartSpec(
             id="time-line", title=f"تطور الأداء حسب {' و'.join(time_columns)}", type="line",
-            categories=[category_builder(row) for row in trend_rows], series=trend_series,
-            result_refs=trend_refs, x_label="الفترة", y_label="القيمة",
+            categories=[category_builder(row) for row in trend_rows], series=[trend_series[0]],
+            result_refs=trend_refs_by_measure[0], x_label=time_columns[0], y_label=trend_series[0].name,
         ))
-
     if measures:
         measure = measures[0]
         query = f"SELECT MIN({_quoted(measure)}), AVG({_quoted(measure)}), MAX({_quoted(measure)}) FROM dataset"
@@ -262,7 +278,7 @@ def execute_deterministic_analysis(
         columns=[str(column) for column in preview.columns], rows=rows,
     )
     connection.close()
-    return registry, charts[:6], kpis[:5], filters, table
+    return registry, charts[:6], kpis[:4], filters, table
 
 
 def assert_numeric_provenance(texts: list[str], registry: dict[str, ResultValue]) -> None:
@@ -364,6 +380,27 @@ def build_dashboard(
             result_refs=[top_ref],
         ))
         if len(category_chart.categories) > 1:
+            second_value = category_chart.series[0].values[1]
+            second_ref = category_chart.result_refs[1]
+            insights.append(InsightSpec(
+                title="الفئة الثانية أداءً",
+                text=(
+                    f"تأتي «{category_chart.categories[1]}» ثانية في {category_chart.series[0].name} "
+                    f"بقيمة {second_value}."
+                ),
+                result_refs=[second_ref],
+            ))
+            lead_margin, lead_margin_ref = register_derived(
+                "category.primary.lead_margin", top_value - second_value,
+                "leader_runner_up_gap", [category_chart.x_label, category_chart.series[0].name],
+                "Derived from verified category aggregation: leader - runner-up",
+            )
+            insights.append(InsightSpec(
+                title="فارق الصدارة",
+                text=(f"تتفوق «{category_chart.categories[0]}» على «{category_chart.categories[1]}» "
+                      f"في {category_chart.series[0].name} بفارق {lead_margin}."),
+                result_refs=[lead_margin_ref, top_ref, second_ref],
+            ))
             last_index = len(category_chart.categories) - 1
             bottom_value = category_chart.series[0].values[last_index]
             bottom_ref = category_chart.result_refs[last_index]
@@ -408,6 +445,26 @@ def build_dashboard(
                 ),
                 result_refs=[share_ref, top_ref],
             ))
+
+        if len(category_chart.series) > 1:
+            secondary = category_chart.series[1]
+            secondary_top_index = max(range(len(secondary.values)), key=secondary.values.__getitem__)
+            secondary_low_index = min(range(len(secondary.values)), key=secondary.values.__getitem__)
+            secondary_offset = len(category_chart.categories)
+            insights.extend([
+                InsightSpec(
+                    title="متصدر المقياس الثاني",
+                    text=(f"تتصدر «{category_chart.categories[secondary_top_index]}» في {secondary.name} "
+                          f"بقيمة {secondary.values[secondary_top_index]}."),
+                    result_refs=[category_chart.result_refs[secondary_offset + secondary_top_index]],
+                ),
+                InsightSpec(
+                    title="أدنى فئة في المقياس الثاني",
+                    text=(f"تسجل «{category_chart.categories[secondary_low_index]}» أدنى قيمة في {secondary.name}: "
+                          f"{secondary.values[secondary_low_index]}."),
+                    result_refs=[category_chart.result_refs[secondary_offset + secondary_low_index]],
+                ),
+            ])
 
     trend_chart = next((chart for chart in charts if chart.id == "time-line" and chart.categories), None)
     if trend_chart and trend_chart.series and trend_chart.series[0].values:
@@ -465,6 +522,37 @@ def build_dashboard(
                 result_refs=[average_ref],
             ),
         ])
+        if values[0] != 0:
+            change_rate, change_rate_ref = register_derived(
+                "trend.primary.change_rate", (values[-1] - values[0]) / abs(values[0]) * 100,
+                "period_change_rate", [trend_chart.x_label, trend_chart.series[0].name],
+                "Derived from verified trend aggregation: (last - first) / abs(first) * 100",
+            )
+            insights.append(InsightSpec(
+                title="نسبة التغير الزمني",
+                text=(f"بلغت نسبة التغير في {trend_chart.series[0].name} بين أول وآخر فترة {change_rate}%."),
+                result_refs=[change_rate_ref, trend_chart.result_refs[0], trend_chart.result_refs[len(values) - 1]],
+            ))
+        periods_above_average, periods_above_average_ref = register_derived(
+            "trend.primary.periods_above_average", sum(1 for value in values if value > average),
+            "periods_above_average", [trend_chart.x_label, trend_chart.series[0].name],
+            "Derived from verified trend aggregation: count(period value > displayed average)",
+        )
+        insights.append(InsightSpec(
+            title="الفترات فوق المتوسط",
+            text=(f"تجاوزت {periods_above_average} فترة متوسط {trend_chart.series[0].name} ضمن النطاق الزمني المعروض."),
+            result_refs=[periods_above_average_ref, average_ref],
+        ))
+        distance_from_peak, distance_from_peak_ref = register_derived(
+            "trend.primary.distance_from_peak", values[peak_index] - values[-1],
+            "last_period_distance_from_peak", [trend_chart.x_label, trend_chart.series[0].name],
+            "Derived from verified trend aggregation: peak - last period",
+        )
+        insights.append(InsightSpec(
+            title="المسافة عن الذروة",
+            text=(f"تفصل آخر فترة معروضة عن ذروة {trend_chart.series[0].name} قيمة {distance_from_peak}."),
+            result_refs=[distance_from_peak_ref, trend_chart.result_refs[peak_index], trend_chart.result_refs[len(values) - 1]],
+        ))
 
     distribution_chart = next((chart for chart in charts if chart.id == "distribution"), None)
     if distribution_chart and distribution_chart.series:
@@ -489,6 +577,17 @@ def build_dashboard(
             text=f"يبلغ الفرق بين أعلى وأدنى قيمة في {distribution_chart.series[0].name} مقدار {spread}.",
             result_refs=[spread_ref, distribution_chart.result_refs[0], distribution_chart.result_refs[2]],
         ))
+        if values[1] != 0:
+            relative_spread, relative_spread_ref = register_derived(
+                "distribution.primary.relative_spread", spread / abs(values[1]) * 100,
+                "relative_range_spread", [distribution_chart.series[0].name],
+                "Derived from verified distribution: spread / abs(average) * 100",
+            )
+            insights.append(InsightSpec(
+                title="النطاق مقارنة بالمتوسط",
+                text=(f"يعادل نطاق {distribution_chart.series[0].name} نسبة {relative_spread}% من متوسطه."),
+                result_refs=[relative_spread_ref, spread_ref, distribution_chart.result_refs[1]],
+            ))
     assert_numeric_provenance([insight.text for insight in insights], registry)
     warnings = quality.notes if quality.score < 90 else []
     agent_description = (

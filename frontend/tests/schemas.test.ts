@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dashboardSchema, healthSchema, workbookSchema } from "../lib/schemas";
+import { analysisAnswerSchema, dashboardSchema, healthSchema, workbookSchema } from "../lib/schemas";
 
 describe("عقود Zod", () => {
   it("تقبل بيانات مصنف صحيحة", () => {
@@ -18,7 +18,7 @@ describe("عقود Zod", () => {
   it("تقبل حالة Ollama المحلية", () => {
     const result = healthSchema.parse({
       status: "ok", service: "bayyinah-backend", mode: "ollama", model: "llama3.2",
-      llm_ready: true, detail: "جاهز", database: "sqlite", jobs: "inline",
+      llm_ready: true, detail: "جاهز", database: "sqlite", jobs: "background",
     });
     expect(result.llm_ready).toBe(true);
   });
@@ -27,8 +27,13 @@ describe("عقود Zod", () => {
     const result = healthSchema.parse({
       status: "ok", service: "bayyinah-backend", mode: "groq",
       model: "llama-3.3-70b-versatile", llm_ready: true,
-      detail: "جاهز", database: "sqlite", jobs: "inline",
+      detail: "جاهز", database: "sqlite", jobs: "background",
     });
     expect(result.mode).toBe("groq");
+  });
+
+  it("تقبل إجابة بيّنة الموثقة", () => {
+    const result = analysisAnswerSchema.parse({ answer: "الفئة الأعلى هي أ.", sources: ["المؤشرات المحسوبة"] });
+    expect(result.sources).toHaveLength(1);
   });
 });

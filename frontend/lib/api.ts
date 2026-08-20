@@ -1,4 +1,4 @@
-import { analysisListSchema, analysisSchema, healthSchema, previewSchema, workbookSchema } from "./schemas";
+import { analysisAnswerSchema, analysisSchema, healthSchema, previewSchema, workbookSchema } from "./schemas";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001/api/v1";
 
@@ -27,9 +27,11 @@ export async function startAnalysis(fileId: string, sheetName: string, columnMap
 export async function resumeAnalysis(analysisId: string, mappings: Record<string, string>) {
   return json(await fetch(`${API}/analyses/${analysisId}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mappings }) }), analysisSchema);
 }
-export async function listAnalyses() {
-  return json(await fetch(`${API}/analyses`), analysisListSchema);
-}
 export async function getAnalysis(analysisId: string) {
   return json(await fetch(`${API}/analyses/${analysisId}`), analysisSchema);
+}
+export async function askAnalysis(analysisId: string, question: string) {
+  return json(await fetch(`${API}/analyses/${analysisId}/ask`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }),
+  }), analysisAnswerSchema);
 }

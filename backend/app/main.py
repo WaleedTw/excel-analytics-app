@@ -8,17 +8,18 @@ from app.config import CORS_ORIGIN_REGEX, FRONTEND_ORIGINS
 from app.excel_service import FileValidationError, preview_sheet, register_sample, store_upload
 from app.logging_config import configure_logging
 from app.schemas import (
-    AnalysisResponse, AnalysisStart, ClarificationAnswer, HealthResponse,
+    AnalysisAnswer, AnalysisQuestion, AnalysisResponse, AnalysisStart, ClarificationAnswer, HealthResponse,
     PreviewResponse, WorkbookInfo,
 )
 from app.service import AnalysisService
-from app.storage import get_file_record, initialize_database, list_analyses
+from app.storage import get_file_record, initialize_database, purge_previous_data
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     configure_logging()
     initialize_database()
+    purge_previous_data()
     yield
 
 
@@ -40,7 +41,7 @@ def health() -> HealthResponse:
     return HealthResponse(
         status="ok" if llm["ready"] else "degraded",
         mode=llm["mode"], model=llm["model"], llm_ready=llm["ready"], detail=llm["detail"],
-        database="sqlite", jobs="inline",
+        database="sqlite", jobs="background",
     )
 
 
@@ -71,14 +72,14 @@ def preview(file_id: str, sheet: str) -> PreviewResponse:
 
 @app.post("/api/v1/analyses", response_model=AnalysisResponse)
 def start_analysis(request: AnalysisStart) -> AnalysisResponse:
-    try: return service.start(request)
+    try: return service.start_background(request)
     except KeyError as exc: raise HTTPException(status_code=404, detail="الملف غير موجود.") from exc
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/analyses/{analysis_id}/resume", response_model=AnalysisResponse)
 def resume_analysis(analysis_id: str, answer: ClarificationAnswer) -> AnalysisResponse:
-    try: return service.resume(analysis_id, answer)
+    try: return service.resume_background(analysis_id, answer)
     except KeyError as exc: raise HTTPException(status_code=404, detail="التحليل غير موجود.") from exc
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -89,6 +90,8 @@ def get_analysis(analysis_id: str) -> AnalysisResponse:
     except KeyError as exc: raise HTTPException(status_code=404, detail="التحليل غير موجود.") from exc
 
 
-@app.get("/api/v1/analyses")
-def analyses() -> list[dict]:
-    return list_analyses()
+@app.post("/api/v1/analyses/{analysis_id}/ask", response_model=AnalysisAnswer)
+def ask_analysis(analysis_id: str, request: AnalysisQuestion) -> AnalysisAnswer:
+    try: return service.ask(analysis_id, request)
+    except KeyError as exc: raise HTTPException(status_code=404, detail="التحليل غير موجود.") from exc
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc

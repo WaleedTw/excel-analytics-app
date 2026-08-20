@@ -9,9 +9,10 @@
 | POST | `/samples/{sales\|messy}` | تسجيل نسخة عمل من ملف تجريبي |
 | GET | `/files/{id}` | بيانات المصنف والأوراق |
 | GET | `/files/{id}/preview?sheet=` | معاينة وملفات الأعمدة |
-| POST | `/analyses` | تشغيل الرسم حتى النهاية أو interrupt |
-| POST | `/analyses/{id}/resume` | الاستئناف بربط الأعمدة |
-| GET | `/analyses/{id}` | حالة التحليل من الذاكرة القصيرة أو السجل الدائم بعد إعادة التشغيل |
-| GET | `/analyses` | التحليلات المحفوظة محليًا |
+| POST | `/analyses` | بدء مهمة تحليل خلفية وإرجاع معرّفها فورًا |
+| POST | `/analyses/{id}/resume` | استئناف مهمة تنتظر توضيح ربط الأعمدة |
+| GET | `/analyses/{id}` | الحالة والنسبة والمرحلة الحقيقية للمهمة الحالية |
 
 طلب البدء: `{file_id, sheet_name, max_iterations, column_mapping}`. جواب HITL: `{mappings: {"رمز_س": "dimension"}}`.
+
+حالات المهمة: `queued` ثم `running`، وقد تنتقل إلى `waiting_for_clarification`، وتنتهي بـ`completed` أو `completed_with_fallback` أو `failed`. لا توجد قائمة ملفات سابقة، وتُحذف نسخة XLSX وسجلها تلقائيًا عند انتهاء المهمة.

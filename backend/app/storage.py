@@ -2,11 +2,9 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from app.config import ANALYSIS_DIR, DATABASE_PATH
+from app.config import ANALYSIS_DIR, DATABASE_PATH, UPLOAD_DIR
 
 
 @contextmanager
@@ -57,52 +55,22 @@ def get_file_record(file_id: str) -> dict[str, Any] | None:
     return json.loads(row[0]) if row else None
 
 
-def save_analysis_record(analysis_id: str, state: dict[str, Any]) -> None:
-    now = datetime.now(timezone.utc).isoformat()
-    dashboard_path = None
-    if state.get("dashboard"):
-        path = ANALYSIS_DIR / f"{analysis_id}.json"
-        path.write_text(json.dumps(state["dashboard"], ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-        dashboard_path = str(path)
+def delete_file_record(file_id: str) -> None:
+    """Remove upload metadata after the source workbook has been deleted."""
     with _connect() as connection:
-        connection.execute(
-            """INSERT INTO analyses(id,file_id,sheet_name,status,dashboard_path,quality_json,trace_json,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET status=excluded.status,dashboard_path=excluded.dashboard_path,
-               quality_json=excluded.quality_json,trace_json=excluded.trace_json,updated_at=excluded.updated_at""",
-            (
-                analysis_id, state["file_id"], state["sheet_name"], state.get("status", "running"), dashboard_path,
-                json.dumps(state.get("quality"), ensure_ascii=False), json.dumps(state.get("trace", []), ensure_ascii=False),
-                now, now,
-            ),
-        )
+        connection.execute("DELETE FROM files WHERE id = ?", (file_id,))
 
 
-def list_analyses() -> list[dict[str, Any]]:
+def purge_previous_data() -> None:
+    """Remove data left by an earlier server session.
+
+    Bayyinah now treats uploads and generated dashboards as session data, so a
+    server reload starts with an empty private workspace.
+    """
+    for path in UPLOAD_DIR.glob("*.xlsx"):
+        path.unlink(missing_ok=True)
+    for path in ANALYSIS_DIR.glob("*.json"):
+        path.unlink(missing_ok=True)
     with _connect() as connection:
-        rows = connection.execute(
-            """SELECT a.id,a.file_id,a.sheet_name,a.status,a.created_at,f.original_name
-               FROM analyses a JOIN files f ON f.id=a.file_id ORDER BY a.updated_at DESC"""
-        ).fetchall()
-    return [dict(row) for row in rows]
-
-
-def get_analysis_record(analysis_id: str) -> dict[str, Any] | None:
-    with _connect() as connection:
-        row = connection.execute(
-            """SELECT id,status,dashboard_path,quality_json,trace_json
-               FROM analyses WHERE id = ?""",
-            (analysis_id,),
-        ).fetchone()
-    if not row:
-        return None
-    record = dict(row)
-    dashboard_path = record.pop("dashboard_path", None)
-    record["dashboard"] = (
-        json.loads(Path(dashboard_path).read_text(encoding="utf-8"))
-        if dashboard_path
-        else None
-    )
-    record["quality"] = json.loads(record.pop("quality_json") or "null")
-    record["trace"] = json.loads(record.pop("trace_json") or "[]")
-    return record
+        connection.execute("DELETE FROM analyses")
+        connection.execute("DELETE FROM files")
