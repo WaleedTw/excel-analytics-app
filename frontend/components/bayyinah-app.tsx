@@ -2,8 +2,8 @@
 
 import { ChangeEvent, CSSProperties, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, ArrowLeft, BarChart3, Bot, Check, ChevronDown, ChevronLeft, CircleAlert,
-  Clock3, Database, Languages, Layers3, LayoutDashboard, Lightbulb, Loader2, MessageCircleQuestion, Search,
+  Activity, ArrowLeft, ArrowRight, BarChart3, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert,
+  Clock3, Database, Github, Globe2, Layers3, LayoutDashboard, Lightbulb, Linkedin, Loader2, MessageCircleQuestion, Search,
   PencilLine, Send, ShieldCheck, Sparkles, TrendingUp, Upload, WandSparkles, X,
 } from "lucide-react";
 import {
@@ -86,7 +86,29 @@ function Logo({ onClick }: { onClick?: () => void }) {
 
 function LanguageToggle() {
   const { locale, toggleLocale } = useLanguage();
-  return <button type="button" className="language-toggle" onClick={toggleLocale} aria-label={locale === "ar" ? "Switch to English" : "Switch to Arabic"}><Languages/><span>{locale === "ar" ? "English" : "Arabic"}</span></button>;
+  return <button type="button" className="language-toggle" onClick={toggleLocale} aria-label={locale === "ar" ? "Switch to English" : "Switch to Arabic"}><Globe2/><span>{locale === "ar" ? "English" : "Arabic"}</span></button>;
+}
+
+function ForwardArrow({ size = 20 }: { size?: number }) {
+  const { direction } = useLanguage();
+  return direction === "rtl" ? <ArrowLeft size={size}/> : <ArrowRight size={size}/>;
+}
+
+function ForwardChevron() {
+  const { direction } = useLanguage();
+  return direction === "rtl" ? <ChevronLeft/> : <ChevronRight/>;
+}
+
+function SiteFooter({ compact = false, go }: { compact?: boolean; go: (view: View) => void }) {
+  const { t } = useLanguage();
+  return <footer className={`site-footer ${compact ? "results-footer" : ""}`}>
+    <Logo onClick={() => go("home")}/>
+    <p>{t("© 2026 وليد التويجري. جميع الحقوق محفوظة.", "© 2026 Waleed Altuwaijri. All rights reserved.")}</p>
+    <nav className="creator-links" aria-label={t("روابط وليد التويجري", "Waleed Altuwaijri links")}>
+      <a href="https://www.linkedin.com/in/waleed-altuwaijri-803273353" target="_blank" rel="noreferrer noopener" aria-label="LinkedIn"><Linkedin/><span>LinkedIn</span></a>
+      <a href="https://github.com/WaleedTw" target="_blank" rel="noreferrer noopener" aria-label="GitHub"><Github/><span>GitHub</span></a>
+    </nav>
+  </footer>;
 }
 
 function Header({ view, go }: { view: View; go: (view: View) => void }) {
@@ -109,7 +131,7 @@ function Home({ go }: { go: (view: View) => void }) {
       <div className="eyebrow"><Sparkles/> {t("تحليــــل عربي واضح", "Clear, verified analytics")}</div>
       <h1>{t("حوّل الأرقــــام إلى", "Turn numbers into")}<br/><em>{t("قــــرار واضــــح.", "clear decisions.")}</em></h1>
       <p>{t("ارفع ملف Excel أو CSV واترك «بيّنة» تفهم بنيته، تتحقق من جودته، ثم تبني لك لوحة تفاعلية بأرقام قابلة للتتبّع.", "Upload an Excel or CSV file. Bayyinah understands its structure, validates data quality, and builds an interactive dashboard with traceable numbers.")}</p>
-      <div className="hero-actions"><button className="primary large hero-primary" onClick={() => go("upload")}>{t("ابــــدأ تحليل ملفك", "Start analyzing your file")} <ArrowLeft size={20}/></button></div>
+      <div className="hero-actions"><button type="button" className="primary large hero-primary" onClick={() => go("upload")}>{t("ابــــدأ تحليل ملفك", "Start analyzing your file")} <ForwardArrow/></button></div>
       <div className="trust-row"><span><ShieldCheck/> {t("حسابات موثقة", "Verified calculations")}</span><span><BarChart3/> {t("رسوم تفاعلية", "Interactive charts")}</span><span><Database/> {t("يدعم XLSX وCSV", "XLSX and CSV support")}</span></div>
     </div>
   </section><section className="home-proof"><div><b>01</b><span><strong>{t("إيجنت تنظيف البيانات", "Data Cleaning Agent")}</strong><small>{t("تهيئة البيانات وفحص جودتها", "Prepares data and validates quality")}</small></span></div><div><b>02</b><span><strong>{t("إيجنت التحليل والحسابات", "Analysis & Calculation Agent")}</strong><small>{t("حساب المؤشرات واستخراج الاتجاهات", "Calculates KPIs and identifies trends")}</small></span></div><div><b>03</b><span><strong>{t("إيجنت الداشبورد والرؤى", "Dashboard & Insights Agent")}</strong><small>{t("اعتماد النتائج وتجهيز اللوحة", "Validates results and prepares the dashboard")}</small></span></div></section></main>;
@@ -123,9 +145,9 @@ function UploadPage({ onFile, loading }: { onFile: (file: File) => void; loading
   return <main className="flow-page"><Journey current={0}/><div className="flow-heading"><span className="section-kicker">{t("تحليل جديد", "New analysis")}</span><h1>{t("ابــــدأ من ملف بيانات", "Start with a data file")}</h1><p>{t("ملف XLSX أو CSV واحد، بحجم لا يتجاوز 10 ميجابايت.", "One XLSX or CSV file, up to 10 MB.")}</p></div><section className={`upload-zone ${dragActive ? "drag-active" : ""}`} aria-busy={loading} onDrop={drop} onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDragOver={(event) => event.preventDefault()}><div className="upload-icon">{loading ? <Loader2 className="spin"/> : <Upload/>}</div><h2>{loading ? t("نفحص الملف الآن…", "Checking the file…") : dragActive ? t("اترك الملف هنا", "Drop the file here") : t("اسحب ملفك إلى هنا", "Drag your file here")}</h2><p>{t("أو اختره من جهازك.", "Or choose it from your device.")}</p><input ref={input} type="file" accept=".xlsx,.csv,text/csv" onChange={(event: ChangeEvent<HTMLInputElement>) => event.target.files?.[0] && onFile(event.target.files[0])}/><button className="primary" disabled={loading} onClick={() => input.current?.click()}>{t("اختيار ملف", "Choose file")}</button><div className="upload-rules"><span><Check/> {t("XLSX أو CSV", "XLSX or CSV")}</span><span><Check/> {t("حسابات موثقة", "Verified calculations")}</span><span><Check/> {t("فحص آمن", "Secure validation")}</span></div></section></main>;
 }
 
-function SheetsPage({ workbook, choose }: { workbook: Workbook; choose: (sheet: string) => void }) {
+function SheetsPage({ workbook, choose, openingSheet }: { workbook: Workbook; choose: (sheet: string) => void; openingSheet: string | null }) {
   const { t } = useLanguage();
-  return <main className="flow-page wide"><Journey current={1}/><div className="flow-heading"><span className="section-kicker">{t("تم التحقق من الملف", "File verified")}</span><h1>{t("اختــــر ورقة العمل", "Select a worksheet")}</h1><p>{workbook.original_name} · {enNumber(workbook.sheets.length)} {t("أوراق", "sheets")}</p></div><div className="sheet-grid">{workbook.sheets.map((sheet, index) => <button key={sheet.name} disabled={!sheet.has_data} onClick={() => choose(sheet.name)}><span className="sheet-icon">{index + 1}</span><div><h3>{sheet.name}</h3><p>{enNumber(sheet.rows)} {t("صف", "rows")} · {enNumber(sheet.columns)} {t("عامود", "columns")}</p></div><span className={sheet.has_data ? "ready" : "empty"}>{sheet.has_data ? t("جاهزة", "Ready") : t("فارغة", "Empty")}</span><ChevronLeft/></button>)}</div></main>;
+  return <main className="flow-page wide"><Journey current={1}/><div className="flow-heading"><span className="section-kicker">{t("تم التحقق من الملف", "File verified")}</span><h1>{t("اختــــر ورقة العمل", "Select a worksheet")}</h1><p>{workbook.original_name} · {enNumber(workbook.sheets.length)} {t("أوراق", "sheets")}</p></div><div className="sheet-grid">{workbook.sheets.map((sheet, index) => {const isOpening=openingSheet===sheet.name;return <button type="button" key={sheet.name} aria-busy={isOpening} disabled={!sheet.has_data||openingSheet!==null} onClick={() => choose(sheet.name)}><span className="sheet-icon">{index + 1}</span><div><h3>{sheet.name}</h3><p>{enNumber(sheet.rows)} {t("صف", "rows")} · {enNumber(sheet.columns)} {t("عامود", "columns")}</p></div><span className={sheet.has_data ? "ready" : "empty"}>{isOpening?<><Loader2 className="spin"/> {t("جارٍ الفتح…", "Opening…")}</>:sheet.has_data?t("جاهزة", "Ready"):t("فارغة", "Empty")}</span><ForwardChevron/></button>;})}</div></main>;
 }
 
 type CleaningAuditView = NonNullable<Preview["cleaning_audit"]>;
@@ -153,17 +175,17 @@ function PreviewPage({ preview, analyze }: { preview: Preview; analyze: (mode: "
   const manualComplete = mode === "recommended" || affectedCells.every(({column,sourceRow})=>manualValues[cellKey(column,sourceRow)]?.trim());
   const overrides = affectedCells.map(({column,sourceRow})=>({column,source_row:sourceRow,value:manualValues[cellKey(column,sourceRow)]??""}));
   const run = () => manualComplete && analyze(mode,mode === "manual" ? overrides : []);
-  return <main className="flow-page extra-wide"><Journey current={2}/><div className="split-heading"><div><span className="section-kicker">{t("معاينة البيانات", "Data preview")}</span><h1>{preview.sheet_name}</h1><p>{enNumber(preview.total_rows)} {t("صفًا", "rows")} · {enNumber(preview.columns.length)} {t("عواميد", "columns")} · {t("أول", "first")} {enNumber(preview.rows.length)} {t("صفًا", "rows")}</p></div><button className="primary" disabled={!manualComplete} onClick={run}>{t("حلّل هذه الورقة", "Analyze this sheet")} <ArrowLeft/></button></div>
+  return <main className="flow-page extra-wide"><Journey current={2}/><div className="split-heading"><div><span className="section-kicker">{t("معاينة البيانات", "Data preview")}</span><h1>{preview.sheet_name}</h1><p>{enNumber(preview.total_rows)} {t("صفًا", "rows")} · {enNumber(preview.columns.length)} {t("عواميد", "columns")} · {t("جميع الصفوف متاحة أدناه", "all rows available below")}</p></div><button type="button" className="primary flow-primary" disabled={!manualComplete} onClick={run}>{t("حلّل هذه الورقة", "Analyze this sheet")} <ForwardArrow/></button></div>
     {audit&&<CleaningNotice audit={audit} proposal/>}
-    {affectedCells.length>0&&<section className="cleaning-decision"><header><div><span className="section-kicker">{t("قرار المستخدم قبل التحليل", "Your decision before analysis")}</span><h2>{t("كيف تريد التعامل مع القيم الناقصة؟", "How should missing values be handled?")}</h2><p>{t("راجع اقتراح بيّنة ثم اختر تطبيقه أو أدخل القيم بنفسك. لن يبدأ التحليل قبل اعتماد اختيارك.", "Review Bayyinah's proposal, then apply it or enter values yourself. Analysis will not start until you confirm your choice.")}</p></div><ShieldCheck/></header><div className="decision-options"><button className={mode==="recommended"?"selected":""} onClick={()=>setMode("recommended")}><span><WandSparkles/></span><div><b>{t("تطبيق معالجة بيّنة المقترحة", "Apply Bayyinah's recommended treatment")}</b><small>{t("العلاقات المثبتة أولًا، ثم التسلسل أو المتوسط/الوسيط حسب نوع العامود.", "Verified relationships first, followed by sequence, mean, or median according to column type.")}</small></div><Check/></button><button className={mode==="manual"?"selected":""} onClick={()=>setMode("manual")}><span><PencilLine/></span><div><b>{t("سأدخل القيم يدويًا", "I will enter values manually")}</b><small>{t("أدخل قيمة مستقلة لكل خلية ناقصة، وتُستخدم كما هي بعد التحقق من نوعها.", "Enter a value for each missing cell. Each value is type-checked before use.")}</small></div><Check/></button></div>{mode==="manual"&&<div className="manual-values">{affectedCells.map(({column,sourceRow})=>{const action=actionFor(column,sourceRow);const key=cellKey(column,sourceRow);return <label key={key}><span><b>{column}</b><small>{t("صف Excel", "Excel row")} <i dir="ltr">{enNumber(sourceRow)}</i>{action?.fill_value!=null?<> · {t("اقتراح بيّنة", "Bayyinah suggestion")}: <i dir="ltr">{String(action.fill_value)}</i></>:null}</small></span><input value={manualValues[key]??""} onChange={(event)=>setManualValues({...manualValues,[key]:event.target.value})} placeholder={t("أدخل القيمة البديلة", "Enter replacement value")} aria-label={t(`القيمة البديلة لعامود ${column} في صف ${sourceRow}`, `Replacement value for column ${column}, row ${sourceRow}`)}/></label>})}<p className={manualComplete?"complete":"pending"}>{manualComplete?<><Check/> {t("اكتملت القيم اليدوية ويمكن بدء التحليل.", "All manual values are complete. Analysis can now start.")}</>:<><CircleAlert/> {t("أكمل جميع القيم اليدوية قبل بدء التحليل.", "Complete all manual values before starting analysis.")}</>}</p></div>}</section>}
-    <div className="profile-row">{preview.columns.map((column) => <article key={column.name} className={column.ambiguous ? "warn" : ""}><span>{column.semantic_role === "measure" ? t("مقياس", "Measure") : column.semantic_role === "date" ? t("تاريخ", "Date") : column.semantic_role === "dimension" ? t("بُعد", "Dimension") : column.semantic_role === "identifier" ? t("معرّف", "Identifier") : column.null_count === preview.total_rows ? t("فارغ بالكامل", "Completely empty") : t("يحتاج توضيحًا", "Needs clarification")}</span><b>{column.name}</b><small><span dir="ltr">{enNumber(column.unique_count)}</span> {t("قيمة فريدة", "unique values")} · {column.null_count === 0 ? t("لا توجد قيم مفقودة", "No missing values") : <><span dir="ltr">{enNumber(column.null_count)}</span> {t("قيمة مفقودة", "missing values")}</>}</small></article>)}</div><section className="preview-table"><table><thead><tr>{preview.columns.map((column) => <th key={column.name}>{column.name}<small>{column.inferred_type}</small></th>)}</tr></thead><tbody>{preview.rows.slice(0,12).map((row, index) => {const sourceRow=audit?.output_source_rows[index]??index+2;return <tr key={index}>{preview.columns.map((column) => {const affected=audit?.missing_locations[column.name]?.includes(sourceRow);const manualValue=manualValues[cellKey(column.name,sourceRow)];const value=affected&&mode==="manual"?(manualValue?.trim()?manualValue:null):row[column.name];return <td className={affected?mode==="manual"&&manualValue?.trim()?"repaired-cell manual":"repaired-cell proposed":undefined} title={affected?t(`قيمة ${mode==="manual"?"يدوية":"معالجة باقتراح بيّنة"} — صف Excel ${sourceRow}`, `${mode==="manual"?"Manual value":"Treated with Bayyinah's proposal"} — Excel row ${sourceRow}`):undefined} key={column.name}>{displayCell(value)}</td>})}</tr>})}</tbody></table></section></main>;
+    {affectedCells.length>0&&<section className="cleaning-decision"><header><div><span className="section-kicker">{t("قرار المستخدم قبل التحليل", "Your decision before analysis")}</span><h2>{t("كيف تريد التعامل مع القيم الناقصة؟", "How should missing values be handled?")}</h2><p>{t("راجع اقتراح بيّنة ثم اختر تطبيقه أو أدخل القيم بنفسك. لن يبدأ التحليل قبل اعتماد اختيارك.", "Review Bayyinah's proposal, then apply it or enter values yourself. Analysis will not start until you confirm your choice.")}</p></div><ShieldCheck/></header><div className="decision-options" role="radiogroup" aria-label={t("طريقة معالجة القيم الناقصة", "Missing-value treatment method")}><button type="button" role="radio" aria-checked={mode==="recommended"} className={mode==="recommended"?"selected":""} onClick={()=>setMode("recommended")}><span><WandSparkles/></span><div><b>{t("تطبيق معالجة بيّنة المقترحة", "Apply Bayyinah's recommended treatment")}</b><small>{t("العلاقات المثبتة أولًا، ثم التسلسل أو المتوسط/الوسيط حسب نوع العامود.", "Verified relationships first, followed by sequence, mean, or median according to column type.")}</small></div><i className="decision-check" aria-hidden="true"><Check/></i></button><button type="button" role="radio" aria-checked={mode==="manual"} className={mode==="manual"?"selected":""} onClick={()=>setMode("manual")}><span><PencilLine/></span><div><b>{t("سأدخل القيم يدويًا", "I will enter values manually")}</b><small>{t("أدخل قيمة مستقلة لكل خلية ناقصة، وتُستخدم كما هي بعد التحقق من نوعها.", "Enter a value for each missing cell. Each value is type-checked before use.")}</small></div><i className="decision-check" aria-hidden="true"><Check/></i></button></div>{mode==="manual"&&<div className="manual-values">{affectedCells.map(({column,sourceRow})=>{const action=actionFor(column,sourceRow);const key=cellKey(column,sourceRow);return <label key={key}><span><b>{column}</b><small>{t("صف Excel", "Excel row")} <i dir="ltr">{enNumber(sourceRow)}</i>{action?.fill_value!=null?<> · {t("اقتراح بيّنة", "Bayyinah suggestion")}: <i dir="ltr">{String(action.fill_value)}</i></>:null}</small></span><input value={manualValues[key]??""} onChange={(event)=>setManualValues({...manualValues,[key]:event.target.value})} placeholder={t("أدخل القيمة البديلة", "Enter replacement value")} aria-label={t(`القيمة البديلة لعامود ${column} في صف ${sourceRow}`, `Replacement value for column ${column}, row ${sourceRow}`)}/></label>})}<p className={manualComplete?"complete":"pending"}>{manualComplete?<><Check/> {t("اكتملت القيم اليدوية ويمكن بدء التحليل.", "All manual values are complete. Analysis can now start.")}</>:<><CircleAlert/> {t("أكمل جميع القيم اليدوية قبل بدء التحليل.", "Complete all manual values before starting analysis.")}</>}</p></div>}</section>}
+    <div className="profile-row">{preview.columns.map((column) => <article key={column.name} className={column.ambiguous ? "warn" : ""}><span>{column.semantic_role === "measure" ? t("مقياس", "Measure") : column.semantic_role === "date" ? t("تاريخ", "Date") : column.semantic_role === "dimension" ? t("بُعد", "Dimension") : column.semantic_role === "identifier" ? t("معرّف", "Identifier") : column.null_count === preview.total_rows ? t("فارغ بالكامل", "Completely empty") : t("يحتاج توضيحًا", "Needs clarification")}</span><b>{column.name}</b><small><span dir="ltr">{enNumber(column.unique_count)}</span> {t("قيمة فريدة", "unique values")} · {column.null_count === 0 ? t("لا توجد قيم مفقودة", "No missing values") : <><span dir="ltr">{enNumber(column.null_count)}</span> {t("قيمة مفقودة", "missing values")}</>}</small></article>)}</div><section className="preview-table" aria-label={t("جميع بيانات الورقة", "All worksheet data")}><table><thead><tr>{preview.columns.map((column) => <th key={column.name}>{column.name}<small>{column.inferred_type}</small></th>)}</tr></thead><tbody>{preview.rows.map((row, index) => {const sourceRow=audit?.output_source_rows[index]??index+2;return <tr key={index}>{preview.columns.map((column) => {const affected=audit?.missing_locations[column.name]?.includes(sourceRow);const manualValue=manualValues[cellKey(column.name,sourceRow)];const value=affected&&mode==="manual"?(manualValue?.trim()?manualValue:null):row[column.name];return <td className={affected?mode==="manual"&&manualValue?.trim()?"repaired-cell manual":"repaired-cell proposed":undefined} title={affected?t(`قيمة ${mode==="manual"?"يدوية":"معالجة باقتراح بيّنة"} — صف Excel ${sourceRow}`, `${mode==="manual"?"Manual value":"Treated with Bayyinah's proposal"} — Excel row ${sourceRow}`):undefined} key={column.name}>{displayCell(value)}</td>})}</tr>})}</tbody></table></section></main>;
 }
 
 function ClarifyPage({ analysis, submit }: { analysis: Analysis; submit: (mapping: Record<string,string>) => void }) {
   const { t } = useLanguage();
   const columns = (analysis.ambiguity?.columns as Array<{name:string; sample_values:unknown[]; reason:string}>) ?? [];
   const [mapping, setMapping] = useState<Record<string,string>>(() => Object.fromEntries(columns.map((column) => [column.name, "dimension"])));
-  return <main className="flow-page"><Journey current={3}/><div className="clarify-card"><div className="clarify-icon"><WandSparkles/></div><span className="section-kicker">{t("تدخل بشري ذكي", "Smart human review")}</span><h1>{t(`نحتاج معنى ${columns.length === 1 ? "عامود واحد" : "بعض العواميد"}`, `We need the meaning of ${columns.length === 1 ? "one column" : "a few columns"}`)}</h1><p>{t("أوقف النظام المسار وحفظ حالته. اختر المعنى الأقرب ثم سيكمل من النقطة نفسها.", "The workflow has paused and saved its state. Choose the closest meaning and it will continue from the same point.")}</p>{columns.map((column) => <div className="clarify-row" key={column.name}><div><b>{column.name}</b><span>{t("عينة", "Sample")}: {column.sample_values.map(String).join(", ") || t("لا توجد قيم", "No values")}</span></div><select aria-label={t(`دور العامود ${column.name}`, `Role of column ${column.name}`)} value={mapping[column.name]} onChange={(event) => setMapping({...mapping, [column.name]: event.target.value})}><option value="dimension">{t("بُعد وصفي", "Descriptive dimension")}</option><option value="measure">{t("مقياس رقمي", "Numeric measure")}</option><option value="date">{t("تاريخ", "Date")}</option><option value="identifier">{t("معرّف", "Identifier")}</option></select></div>)}<button className="primary full" onClick={() => submit(mapping)}>{t("حفظ التوضيح ومتابعة التحليل", "Save clarification and continue")} <ArrowLeft/></button><small className="memory-note"><Database/> {t("الحالة محفوظة تحت المعرّف", "State saved under ID")} {analysis.analysis_id.slice(0,8)}</small></div></main>;
+  return <main className="flow-page"><Journey current={3}/><div className="clarify-card"><div className="clarify-icon"><WandSparkles/></div><span className="section-kicker">{t("تدخل بشري ذكي", "Smart human review")}</span><h1>{t(`نحتاج معنى ${columns.length === 1 ? "عامود واحد" : "بعض العواميد"}`, `We need the meaning of ${columns.length === 1 ? "one column" : "a few columns"}`)}</h1><p>{t("أوقف النظام المسار وحفظ حالته. اختر المعنى الأقرب ثم سيكمل من النقطة نفسها.", "The workflow has paused and saved its state. Choose the closest meaning and it will continue from the same point.")}</p>{columns.map((column) => <div className="clarify-row" key={column.name}><div><b>{column.name}</b><span>{t("عينة", "Sample")}: {column.sample_values.map(String).join(", ") || t("لا توجد قيم", "No values")}</span></div><select aria-label={t(`دور العامود ${column.name}`, `Role of column ${column.name}`)} value={mapping[column.name]} onChange={(event) => setMapping({...mapping, [column.name]: event.target.value})}><option value="dimension">{t("بُعد وصفي", "Descriptive dimension")}</option><option value="measure">{t("مقياس رقمي", "Numeric measure")}</option><option value="date">{t("تاريخ", "Date")}</option><option value="identifier">{t("معرّف", "Identifier")}</option></select></div>)}<button className="primary full flow-primary" onClick={() => submit(mapping)}>{t("حفظ التوضيح ومتابعة التحليل", "Save clarification and continue")} <ForwardArrow/></button><small className="memory-note"><Database/> {t("الحالة محفوظة تحت المعرّف", "State saved under ID")} {analysis.analysis_id.slice(0,8)}</small></div></main>;
 }
 
 function ProgressPage({ analysis, presentingDashboard }: { analysis: Analysis | null; presentingDashboard: boolean }) {
@@ -195,27 +217,9 @@ function ProgressPage({ analysis, presentingDashboard }: { analysis: Analysis | 
 
 function AgentProof({ analysis }: { analysis: Analysis }) {
   const { t } = useLanguage();
-  type AgentRun = Analysis["agent_runs"][number];
-  type AgentKey = "cleaning_agent" | "analysis_agent" | "dashboard_agent";
-  const specs: Array<{agent:AgentKey;aliases:string[];markers:string[];label:string;responsibility:string;summary:string;artifacts:string[];evidence:boolean}> = [
-    { agent:"cleaning_agent", aliases:["cleaning_agent","cleaning","data_cleaning","data_cleaning_agent"], markers:["إيجنت تنظيف البيانات","Data Cleaning Agent"], label:t("إيجنت تنظيف البيانات","Data Cleaning Agent"), responsibility:t("تهيئة نسخة التحليل وفحص الجودة ومعالجة القيم الناقصة.","Prepares the analysis copy, validates quality, and handles missing values."), summary:t("اكتملت تهيئة نسخة التحليل وتوثيق فحوص الجودة.","The analysis copy and quality checks were completed."), artifacts:["cleaning_audit","column_profiles","quality_report"], evidence:Boolean(analysis.cleaning_audit||analysis.quality) },
-    { agent:"analysis_agent", aliases:["analysis_agent","analysis","calculation_agent","analysis_calculation_agent"], markers:["إيجنت التحليل والحسابات","Analysis & Calculation Agent"], label:t("إيجنت التحليل والحسابات","Analysis & Calculation Agent"), responsibility:t("إنشاء الخطة الدلالية وتنفيذ الحسابات البرمجية الموثقة.","Builds the semantic plan and runs verified programmatic calculations."), summary:t("اكتملت الحسابات البرمجية وربط النتائج بمصادرها.","Programmatic calculations and result provenance were completed."), artifacts:["analysis_plan","computed_results","dashboard_candidate"], evidence:Boolean(analysis.analysis_plan||analysis.dashboard&&Object.keys(analysis.dashboard.computed_results).length) },
-    { agent:"dashboard_agent", aliases:["dashboard_agent","dashboard","insights_agent","dashboard_insights_agent"], markers:["إيجنت الداشبورد والرؤى","Dashboard & Insights Agent"], label:t("إيجنت الداشبورد والرؤى","Dashboard & Insights Agent"), responsibility:t("التحقق من النتائج وتجهيز اللوحة والرؤى القابلة للتتبّع.","Validates results and prepares the traceable dashboard and insights."), summary:t("اكتمل التحقق من اللوحة واعتماد النتائج قبل العرض.","The dashboard was validated and approved for display."), artifacts:["dashboard_spec","numeric_provenance"], evidence:Boolean(analysis.dashboard) },
-  ];
-  const canonicalAgent = (value:string):AgentKey|undefined => {
-    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g,"_");
-    return specs.find((spec)=>spec.aliases.includes(normalized))?.agent;
-  };
-  const latestRuns = [...(analysis.agent_runs??[])].reverse();
-  const runs = specs.flatMap((spec):AgentRun[] => {
-    const current = latestRuns.find((run)=>canonicalAgent(run.agent)===spec.agent);
-    if (current) return [{...current,agent:spec.agent,label:current.label||spec.label,responsibility:current.responsibility||spec.responsibility,summary:current.summary||spec.summary}];
-    const trace = [...(analysis.trace??[])].reverse().find((entry)=>spec.markers.some((marker)=>entry.includes(marker)));
-    if (!trace&&!spec.evidence) return [];
-    return [{agent:spec.agent,label:spec.label,responsibility:spec.responsibility,status:"completed",summary:trace?.split("—",2).pop()?.trim()||spec.summary,artifacts:spec.artifacts}];
-  });
-  const complete = runs.length===specs.length;
-  return <section className="agent-proof"><div className="agent-proof-icon"><Bot/></div><div className="agent-proof-copy"><span className="section-kicker">{t("نتيجة التحليل", "Analysis result")}</span><h2>{t("اكتمل المسار وتحقّقــــت النتائج", "Workflow completed and results verified")}</h2><p>{complete?t("أكملت الإيجنتات مراحل التنظيف والتحليل والتحقق، واعتمدت النتائج قبل عرضها.", "The agents completed cleaning, analysis, and validation before approving the results for display."):t("اكتمل التحليل، وتظهر أدناه المراحل التي أمكن توثيقها من استجابة الخادم.","The analysis completed; the stages verified from the server response are shown below.")}</p></div><details className="trace-disclosure"><summary><span className="trace-summary-icon"><Activity/></span><span className="trace-summary-copy"><small>{t("المراحل التنفيذية", "Execution stages")}</small><strong><b dir="ltr">{enNumber(runs.length)}</b> {t("مراحل رئيسية حسب الإيجنت", "main agent stages")}</strong></span><span className={`trace-status ${complete?"":"partial"}`}><Check/> {complete?t("مكتمل", "Completed"):t("موثّق جزئيًا","Partially verified")}</span><ChevronDown className="trace-chevron"/></summary><div className="trace-panel agent-run-panel"><header><b>{t("المراحل التنفيذية والمسؤول عنها", "Execution stages and owners")}</b><span dir="ltr">{enNumber(runs.length)}</span></header><ol>{runs.map((run,index) => <li key={run.agent}><b><Check/></b><span><small dir="ltr">{String(index+1).padStart(2,"0")}</small><strong>{run.label}</strong><em>{run.responsibility}</em><i>{run.summary}</i></span></li>)}</ol></div></details></section>;
+  const order = ["cleaning_agent","analysis_agent","dashboard_agent"];
+  const runs = order.map((agent)=>[...analysis.agent_runs].reverse().find((run)=>run.agent===agent)).filter((run):run is Analysis["agent_runs"][number]=>Boolean(run));
+  return <section className="agent-proof"><div className="agent-proof-icon"><Bot/></div><div className="agent-proof-copy"><span className="section-kicker">{t("نتيجة التحليل", "Analysis result")}</span><h2>{t("اكتمل المسار وتحقّقــــت النتائج", "Workflow completed and results verified")}</h2><p>{t("أكملت الإيجنتات مراحل التنظيف والتحليل والتحقق، واعتمدت النتائج قبل عرضها.", "The agents completed cleaning, analysis, and validation before approving the results for display.")}</p></div><details className="trace-disclosure"><summary><span className="trace-summary-icon"><Activity/></span><span className="trace-summary-copy"><small>{t("المراحل التنفيذية", "Execution stages")}</small><strong><b dir="ltr">{enNumber(runs.length)}</b> {t("مراحل رئيسية حسب الإيجنت", "main agent stages")}</strong></span><span className="trace-status"><Check/> {t("مكتمل", "Completed")}</span><ChevronDown className="trace-chevron"/></summary><div className="trace-panel agent-run-panel"><header><b>{t("المراحل التنفيذية والمسؤول عنها", "Execution stages and owners")}</b><span dir="ltr">{enNumber(runs.length)}</span></header><ol>{runs.map((run,index) => <li key={run.agent}><b><Check/></b><span><small dir="ltr">{String(index+1).padStart(2,"0")}</small><strong>{run.label}</strong><em>{run.responsibility}</em><i>{run.summary}</i></span></li>)}</ol></div></details></section>;
 }
 
 function numericCell(value: unknown) {
@@ -223,6 +227,30 @@ function numericCell(value: unknown) {
   const parsed = Number(String(value ?? "").replace(/,/g,""));
   return Number.isFinite(parsed) ? parsed : null;
 }
+
+function arabicFieldLabel(name: string, kind: "dimension" | "measure") {
+  const normalized = name.toLowerCase().replace(/[_-]+/g," ");
+  if (kind === "dimension") {
+    if (/company|brand|شركة/.test(normalized)) return "الشركات";
+    if (/product|منتج/.test(normalized)) return "المنتجات";
+    if (/category|segment|فئ|تصنيف/.test(normalized)) return "الفئات";
+    if (/region|منطق/.test(normalized)) return "المناطق";
+    if (/city|مدين/.test(normalized)) return "المدن";
+    if (/customer|client|عميل/.test(normalized)) return "العملاء";
+    if (/year|سن|عام/.test(normalized)) return "السنوات";
+    if (/quarter|ربع/.test(normalized)) return "الأرباع";
+    if (/date|تاريخ/.test(normalized)) return "التواريخ";
+  }
+  if (/e.?com|online|إلكترون/.test(normalized) && /revenue|sales|إيراد|مبيعات/.test(normalized)) return "إيرادات التجارة الإلكترونية";
+  if (/revenue|sales|إيراد|مبيعات/.test(normalized)) return "إجمالي الإيرادات";
+  if (/profit|ربح/.test(normalized)) return "إجمالي الأرباح";
+  if (/percentage|percent|rate|نسب/.test(normalized)) return "النسبة";
+  if (/quantity|count|كمية/.test(normalized)) return "الكمية";
+  if (/price|cost|سعر|تكلفة/.test(normalized)) return "السعر";
+  return name;
+}
+
+const englishFieldLabel = (name: string) => name.replace(/[_-]+/g," ").replace(/\s+/g," ").trim();
 
 function AskBayyinah({ analysisId, dashboard }: { analysisId: string; dashboard: Dashboard }) {
   const { locale, t } = useLanguage();
@@ -234,10 +262,14 @@ function AskBayyinah({ analysisId, dashboard }: { analysisId: string; dashboard:
   const suggestions = useMemo(() => {
     const dimension = dashboard.dimensions[0];
     const measure = dashboard.measures[0];
+    const dimensionAr = dimension ? arabicFieldLabel(dimension,"dimension") : "";
+    const measureAr = measure ? arabicFieldLabel(measure,"measure") : "";
+    const dimensionEn = dimension ? englishFieldLabel(dimension) : "";
+    const measureEn = measure ? englishFieldLabel(measure) : "";
     return [
       t("ما القيم الناقصة وكيف عولجت؟", "Which values were missing, and how were they treated?"),
-      dimension && measure ? t(`ما أعلى 3 ${dimension} حسب ${measure}؟`, `What are the top 3 ${dimension} by ${measure}?`) : t("ما أهم نتيجة في التحليل؟", "What is the most important result?"),
-      dimension && measure ? t(`قارن ${measure} حسب ${dimension}`, `Compare ${measure} by ${dimension}`) : t("هل توجد ملاحظات على جودة البيانات؟", "Are there any data-quality concerns?"),
+      dimension && measure ? t(`ما أعلى 3 من ${dimensionAr} حسب ${measureAr}؟`, `What are the top 3 ${dimensionEn} by ${measureEn}?`) : t("ما أهم نتيجة في التحليل؟", "What is the most important result?"),
+      dimension && measure ? t(`قارن ${measureAr} بين ${dimensionAr}`, `Compare ${measureEn} by ${dimensionEn}`) : t("هل توجد ملاحظات على جودة البيانات؟", "Are there any data-quality concerns?"),
     ];
   },[dashboard.dimensions,dashboard.measures,t]);
   const submit = async (event: FormEvent) => {
@@ -247,12 +279,12 @@ function AskBayyinah({ analysisId, dashboard }: { analysisId: string; dashboard:
     catch (caught) { setFailure(caught instanceof Error ? caught.message : t("تعذر إرسال السؤال.", "The question could not be sent.")); }
     finally { setBusy(false); }
   };
-  return <section className="ask-bayyinah"><header><div className="ask-icon"><MessageCircleQuestion/></div><div><span className="section-kicker">{t("مساعد النتائج الموثّق", "Verified results assistant")}</span><h2>{t("اسأل بيّنة عن التحليل", "Ask Bayyinah about the analysis")}</h2><p>{t("يفهم المقياس والبُعد والفلاتر، ثم يحسب الإجابة من البيانات ويتحقق منها بمحركين مستقلين.", "It understands measures, dimensions, and filters, then calculates the answer from the data and verifies it with two independent engines.")}</p></div></header><div className="ask-suggestions" aria-label={t("أسئلة مقترحة", "Suggested questions")}>{suggestions.map((suggestion)=><button type="button" key={suggestion} onClick={()=>setQuestion(suggestion)}>{suggestion}</button>)}</div><form onSubmit={submit}><input value={question} onChange={(event)=>setQuestion(event.target.value)} maxLength={500} placeholder={t("مثال: ما أعلى 3 منتجات حسب إجمالي المبيعات؟", "Example: What are the top 3 products by total sales?")} aria-label={t("سؤالك عن التحليل", "Your question about the analysis")}/><button className="primary" disabled={busy||question.trim().length<2}>{busy?<Loader2 className="spin"/>:<Send/>} {t("إرسال", "Send")}</button></form>{failure&&<div className="ask-error"><CircleAlert/>{failure}</div>}{answer&&<article className="ask-answer"><b>{t("إجابة بيّنة", "Bayyinah's answer")}</b><p>{answer}</p><small>{sources.join(" · ")}</small></article>}</section>;
+  return <section className="ask-bayyinah"><header><div className="ask-icon"><MessageCircleQuestion/></div><div><span className="section-kicker">{t("مساعد النتائج الموثّق", "Verified results assistant")}</span><h2>{t("اسأل بيّنة عن التحليل", "Ask Bayyinah about the analysis")}</h2><p>{t("يفهم المقياس والبُعد والفلاتر، ثم يحسب الإجابة من البيانات ويتحقق منها بمحركين مستقلين.", "It understands measures, dimensions, and filters, then calculates the answer from the data and verifies it with two independent engines.")}</p></div></header><div className="ask-suggestions" aria-label={t("أسئلة مقترحة", "Suggested questions")}>{suggestions.map((suggestion)=><button type="button" dir="auto" key={suggestion} onClick={()=>setQuestion(suggestion)}>{suggestion}</button>)}</div><form onSubmit={submit}><input dir="auto" value={question} onChange={(event)=>setQuestion(event.target.value)} maxLength={500} placeholder={t("مثال: ما أعلى 3 منتجات حسب إجمالي المبيعات؟", "Example: What are the top 3 products by total sales?")} aria-label={t("سؤالك عن التحليل", "Your question about the analysis")}/><button className="primary" disabled={busy||question.trim().length<2}>{busy?<Loader2 className="spin"/>:<Send/>} {t("إرسال", "Send")}</button></form>{failure&&<div className="ask-error" dir="auto"><CircleAlert/><bdi>{failure}</bdi></div>}{answer&&<article className="ask-answer"><b>{t("إجابة بيّنة", "Bayyinah's answer")}</b><p dir="auto"><bdi>{answer}</bdi></p><small className="answer-sources">{sources.map((source,index)=><span key={`${source}-${index}`}><bdi dir="auto">{source}</bdi></span>)}</small></article>}</section>;
 }
 
 function DashboardNav({ active, go }: { active: "dashboard" | "insights"; go: (view: View) => void }) {
   const { t } = useLanguage();
-  return <aside className="dash-sidebar"><button className="dash-brand" onClick={() => go("home")} aria-label={t("بينة — العودة إلى الرئيسية", "Bayyinah — back to home")}><strong>{t("بــــيّنة", "Bayyinah")}</strong></button><nav aria-label={t("أقسام لوحة التحليل", "Analysis dashboard sections")}><button className={active === "dashboard" ? "active" : ""} aria-current={active === "dashboard" ? "page" : undefined} onClick={() => go("dashboard")}><LayoutDashboard/><span>{t("نظرة عامة", "Overview")}</span></button><button className={active === "insights" ? "active" : ""} aria-current={active === "insights" ? "page" : undefined} onClick={() => go("insights")}><Sparkles/><span>{t("الرؤى التفصيلية", "Detailed insights")}</span></button></nav><LanguageToggle/></aside>;
+  return <aside className="dash-sidebar"><button className="dash-brand" onClick={() => go("home")} aria-label={t("بينة — العودة إلى الرئيسية", "Bayyinah — back to home")}><strong>{t("بــــيّنة", "Bayyinah")}</strong></button><nav aria-label={t("أقسام لوحة التحليل", "Analysis dashboard sections")}><button className={active === "dashboard" ? "active" : ""} aria-current={active === "dashboard" ? "page" : undefined} onClick={() => go("dashboard")}><LayoutDashboard/><span>{t("نظرة عامة", "Overview")}</span></button><button className={active === "insights" ? "active" : ""} aria-current={active === "insights" ? "page" : undefined} onClick={() => go("insights")}><Sparkles/><span>{t("الرؤى التفصيلية", "Detailed insights")}</span></button></nav></aside>;
 }
 
 function DashboardView({ analysis, go }: { analysis: Analysis; go: (view: View) => void }) {
@@ -289,7 +321,7 @@ function DashboardView({ analysis, go }: { analysis: Analysis; go: (view: View) 
     <section className="charts-grid">{dashboard.charts.slice(0,4).map((chart)=><ChartCard chart={chart} tableSpec={dashboard.tables[0]} dimensions={dashboard.dimensions} measures={dashboard.measures} selection={selection} onSelectionChange={setSelection} key={chart.id}/>)}</section>
     <section className="insight-grid quality-only"><article className="quality-card"><div className="score-ring" style={ringStyle}><span><b dir="ltr">{score}</b><small>{t("من 100", "out of 100")}</small></span></div><div><span className="section-kicker">{t("جودة البيانات", "Data quality")}</span><h2>{score>=85?t("موثوقة لاتخاذ القرار", "Reliable for decision-making"):t("تحتاج إلى مراجعة", "Needs review")}</h2><p>{analysis.quality?.notes[0]}</p></div></article></section>
     {dashboard.filters.length>0&&<section className="filter-bar"><div><Search/><span><b>{t("تصفية جدول البيانات", "Filter data table")}</b><small>{t("تُطبق الخيارات على السجلات أدناه", "Options apply to the records below")}</small></span></div>{dashboard.filters.map((filter)=><label key={filter.column}>{filter.label}<select value={filters[filter.column]??""} onChange={(event)=>setFilters({...filters,[filter.column]:event.target.value})}><option value="">{t("الكل", "All")}</option>{filter.values.map((value)=><option key={value}>{value}</option>)}</select></label>)}</section>}
-    <DataTable tableSpec={dashboard.tables[0]} filters={filters} cleaningAudit={analysis.cleaning_audit}/></section></main>;
+    <DataTable tableSpec={dashboard.tables[0]} filters={filters} cleaningAudit={analysis.cleaning_audit}/><SiteFooter compact go={go}/></section></main>;
 }
 
 function InsightsPage({ analysis, go }: { analysis: Analysis; go: (view: View) => void }) {
@@ -303,7 +335,7 @@ function InsightsPage({ analysis, go }: { analysis: Analysis; go: (view: View) =
   const groupedInsights = new Set(groups.flatMap((group)=>group.insights));
   const otherInsights = dashboard.detailed_insights.filter((insight)=>!groupedInsights.has(insight));
   const visibleGroups = otherInsights.length?[...groups,{id:"other",label:t("رؤى أخرى", "Other insights"),icon:<Lightbulb/>,terms:[],insights:otherInsights}]:groups;
-  return <main className="dashboard-page insights-dashboard"><DashboardNav active="insights" go={go}/><section className="dash-main insights-main"><div className="flow-heading"><span className="section-kicker">{enNumber(dashboard.detailed_insights.length)} {t("رؤى موثقة", "verified insights")}</span><h1>{t("تحليــــل يمكن تتبّعه", "Traceable analysis")}</h1><p>{t("كل استنتاج رقمي مرتبط بنتيجة محسوبة وموثقة.", "Every numeric conclusion is linked to a calculated and verified result.")}</p></div><AskBayyinah key={locale} analysisId={analysis.analysis_id} dashboard={dashboard}/><div className="insight-groups">{visibleGroups.filter((group)=>group.insights.length>0).map((group)=><section className={`insight-group ${group.id}`} key={group.id}><header><span>{group.icon}</span><h2>{group.label}</h2><b dir="ltr">{enNumber(group.insights.length)}</b></header><div className="details-list">{group.insights.map((insight,index)=><article key={`${insight.title}-${index}`}><b>{String(index+1).padStart(2,"0")}</b><div><h3>{insight.title}</h3><p>{insight.text}</p><small><ShieldCheck/> {insight.result_refs.join(" · ")}</small></div></article>)}</div></section>)}</div></section></main>;
+  return <main className="dashboard-page insights-dashboard"><DashboardNav active="insights" go={go}/><section className="dash-main insights-main"><div className="flow-heading"><span className="section-kicker">{enNumber(dashboard.detailed_insights.length)} {t("رؤى موثقة", "verified insights")}</span><h1>{t("تحليــــل يمكن تتبّعه", "Traceable analysis")}</h1><p>{t("كل استنتاج رقمي مرتبط بنتيجة محسوبة وموثقة.", "Every numeric conclusion is linked to a calculated and verified result.")}</p></div><AskBayyinah key={locale} analysisId={analysis.analysis_id} dashboard={dashboard}/><div className="insight-groups">{visibleGroups.filter((group)=>group.insights.length>0).map((group)=><section className={`insight-group ${group.id}`} key={group.id}><header><span>{group.icon}</span><h2>{group.label}</h2><b dir="ltr">{enNumber(group.insights.length)}</b></header><div className="details-list">{group.insights.map((insight,index)=><article key={`${insight.title}-${index}`}><b>{String(index+1).padStart(2,"0")}</b><div><h3>{insight.title}</h3><p>{insight.text}</p><small><ShieldCheck/> {insight.result_refs.join(" · ")}</small></div></article>)}</div></section>)}</div><SiteFooter compact go={go}/></section></main>;
 }
 
 function BayyinahAppContent() {
@@ -315,6 +347,7 @@ function BayyinahAppContent() {
   const [analysis,setAnalysis] = useState<Analysis|null>(null);
   const [health,setHealth] = useState<Health|null>(null);
   const [loading,setLoading] = useState(false);
+  const [openingSheet,setOpeningSheet] = useState<string|null>(null);
   const [error,setError] = useState("");
   const [presentingDashboard,setPresentingDashboard] = useState(false);
   useEffect(() => { localeRef.current = locale; }, [locale]);
@@ -335,9 +368,13 @@ function BayyinahAppContent() {
   }, [locale]);
   const go = (next: View) => { setView(next); window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); };
   const safe = async (action: () => Promise<void>) => { setLoading(true); setError(""); try { await action(); } catch (caught) { setError(caught instanceof Error ? caught.message : t("حدث خطأ غير متوقع.", "An unexpected error occurred.")); go("error"); } finally { setLoading(false); } };
-  const acceptWorkbook = (item: Workbook) => { setWorkbook(item); go("sheets"); };
+  const acceptWorkbook = (item: Workbook) => { setWorkbook(item); setOpeningSheet(null); go("sheets"); };
   const onFile = (file: File) => safe(async () => acceptWorkbook(await uploadWorkbook(file,locale)));
-  const choose = (sheet: string) => safe(async () => { if (!workbook) return; setPreview(await getPreview(workbook.file_id,sheet,locale)); go("preview"); });
+  const choose = (sheet: string) => {
+    if (!workbook || openingSheet) return;
+    setOpeningSheet(sheet);
+    void safe(async () => { setPreview(await getPreview(workbook.file_id,sheet,locale)); go("preview"); }).finally(() => setOpeningSheet(null));
+  };
   const waitForResult = async (initial: Analysis) => {
     let current = initial;
     let dashboardVisibleSince = current.progress >= 73 ? performance.now() : null;
@@ -366,7 +403,7 @@ function BayyinahAppContent() {
   const renderContent = () => {
     if (view === "home") return <Home go={go}/>;
     if (view === "upload") return <UploadPage onFile={onFile} loading={loading}/>;
-    if (view === "sheets" && workbook) return <SheetsPage workbook={workbook} choose={choose}/>;
+    if (view === "sheets" && workbook) return <SheetsPage workbook={workbook} choose={choose} openingSheet={openingSheet}/>;
     if (view === "preview" && preview) return <PreviewPage preview={preview} analyze={analyze}/>;
     if (view === "clarify" && analysis) return <ClarifyPage analysis={analysis} submit={clarify}/>;
     if (view === "progress") return <ProgressPage analysis={analysis} presentingDashboard={presentingDashboard}/>;
@@ -377,7 +414,7 @@ function BayyinahAppContent() {
   };
   const showLlmNotice = health && (health.mode === "mock" || !health.llm_ready);
   const inResults = view === "dashboard" || view === "insights";
-  return <div className={`app-shell ${view === "home" ? "home-active" : ""}`}>{!inResults && <Header view={view} go={go}/>} {!inResults && showLlmNotice && <div className={`llm-notice ${health.mode}`}><CircleAlert/><div><b>{health.mode === "mock" ? t("وضع الاختبار مفعّل", "Test mode is active") : t("خدمة الذكاء الاصطناعي تحتاج إعدادًا", "AI service requires configuration")}</b><span>{health.detail}</span></div></div>} {inResults ? renderContent() : <div className="view-stage" key={view}>{renderContent()}</div>} {!inResults && <footer className="site-footer"><Logo onClick={() => go("home")}/></footer>}</div>;
+  return <div className={`app-shell ${view === "home" ? "home-active" : ""}`}>{!inResults && <Header view={view} go={go}/>} {!inResults && showLlmNotice && <div className={`llm-notice ${health.mode}`}><CircleAlert/><div><b>{health.mode === "mock" ? t("وضع الاختبار مفعّل", "Test mode is active") : t("خدمة الذكاء الاصطناعي تحتاج إعدادًا", "AI service requires configuration")}</b><span>{health.detail}</span></div></div>} {inResults ? renderContent() : <div className="view-stage" key={view}>{renderContent()}</div>} {!inResults && <SiteFooter go={go}/>}</div>;
 }
 
 export function BayyinahApp() {
