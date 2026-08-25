@@ -128,85 +128,18 @@ function Journey({ current }: { current: number }) {
   return <div className="journey" aria-label={t("مراحل التحليل", "Analysis stages")}>{stages[locale].map((stage, index) => <div className={index < current ? "done" : index === current ? "current" : ""} aria-current={index === current ? "step" : undefined} key={stage}><span>{index < current ? <Check size={13} /> : index + 1}</span><b>{stage}</b></div>)}</div>;
 }
 
-// ======== الصفحة الرئيسية – معدلة لتكون في المنتصف ========
 function Home({ go }: { go: (view: View) => void }) {
   const { t } = useLanguage();
-  return (
-    <main className="home-page home-apple" style={{
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: "center",
-      minHeight: "80vh",
-      textAlign: "center",
-      padding: "2rem 1.5rem",
-    }}>
-      <section className="hero-section" style={{ maxWidth: "820px", width: "100%" }}>
-        <div className="hero-copy">
-          <div className="eyebrow" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem" }}>
-            <Sparkles/> {t("تحليــــل عربي واضح", "Clear, verified analytics")}
-          </div>
-          <h1 style={{ fontSize: "clamp(2.2rem, 6vw, 3.6rem)", lineHeight: 1.2, margin: "1.2rem 0 0.8rem" }}>
-            {t("حوّل الأرقــــام إلى", "Turn numbers into")}<br/>
-            <em>{t("قــــرار واضــــح.", "clear decisions.")}</em>
-          </h1>
-          <p style={{ fontSize: "1.2rem", maxWidth: "600px", margin: "0 auto 1.8rem", opacity: 0.85 }}>
-            {t("ارفع ملف Excel أو CSV واترك «بيّنة» يفهم بنيته، يتحقق من جودته، ثم يبني لك لوحة تفاعلية بأرقام قابلة للتتبّع.", "Upload an Excel or CSV file. Bayyinah understands its structure, validates data quality, and builds an interactive dashboard with traceable numbers.")}
-          </p>
-          <div className="hero-actions" style={{ display: "flex", justifyContent: "center", gap: "1rem", flexWrap: "wrap" }}>
-            <button type="button" className="primary large hero-primary" onClick={() => go("upload")}>
-              {t("ابــــدأ تحليل ملفك", "Start analyzing your file")} <ForwardArrow/>
-            </button>
-          </div>
-          <div className="trust-row" style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "2rem",
-            flexWrap: "wrap",
-            marginTop: "2rem",
-            fontSize: "0.95rem",
-          }}>
-            <span><ShieldCheck/> {t("حسابات موثقة", "Verified calculations")}</span>
-            <span><BarChart3/> {t("رسوم تفاعلية", "Interactive charts")}</span>
-            <span><Database/> {t("يدعم XLSX وCSV", "XLSX and CSV support")}</span>
-          </div>
-        </div>
-      </section>
-      <section className="home-proof" style={{
-        display: "flex",
-        justifyContent: "center",
-        gap: "2.5rem",
-        flexWrap: "wrap",
-        marginTop: "3rem",
-        maxWidth: "820px",
-        width: "100%",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <b>01</b>
-          <span>
-            <strong>{t("إيجنت تنظيف البيانات", "Data Cleaning Agent")}</strong>
-            <small style={{ display: "block", opacity: 0.7 }}>{t("تهيئة البيانات وفحص جودتها", "Prepares data and validates quality")}</small>
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <b>02</b>
-          <span>
-            <strong>{t("إيجنت التحليل والحسابات", "Analysis & Calculation Agent")}</strong>
-            <small style={{ display: "block", opacity: 0.7 }}>{t("حساب المؤشرات واستخراج الاتجاهات", "Calculates KPIs and identifies trends")}</small>
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <b>03</b>
-          <span>
-            <strong>{t("إيجنت الداشبورد والرؤى", "Dashboard & Insights Agent")}</strong>
-            <small style={{ display: "block", opacity: 0.7 }}>{t("اعتماد النتائج وتجهيز اللوحة", "Validates results and prepares the dashboard")}</small>
-          </span>
-        </div>
-      </section>
-    </main>
-  );
+  return <main className="home-page home-apple"><section className="hero-section">
+    <div className="hero-copy">
+      <div className="eyebrow"><Sparkles/> {t("تحليــــل عربي واضح", "Clear, verified analytics")}</div>
+      <h1>{t("حوّل الأرقــــام إلى", "Turn numbers into")}<br/><em>{t("قــــرار واضــــح.", "clear decisions.")}</em></h1>
+      <p>{t("ارفع ملف Excel أو CSV واترك «بيّنة» تفهم بنيته، تتحقق من جودته، ثم تبني لك لوحة تفاعلية بأرقام قابلة للتتبّع.", "Upload an Excel or CSV file. Bayyinah understands its structure, validates data quality, and builds an interactive dashboard with traceable numbers.")}</p>
+      <div className="hero-actions"><button type="button" className="primary large hero-primary" onClick={() => go("upload")}>{t("ابــــدأ تحليل ملفك", "Start analyzing your file")} <ForwardArrow/></button></div>
+      <div className="trust-row"><span><ShieldCheck/> {t("حسابات موثقة", "Verified calculations")}</span><span><BarChart3/> {t("رسوم تفاعلية", "Interactive charts")}</span><span><Database/> {t("يدعم XLSX وCSV", "XLSX and CSV support")}</span></div>
+    </div>
+  </section><section className="home-proof"><div><b>01</b><span><strong>{t("إيجنت تنظيف البيانات", "Data Cleaning Agent")}</strong><small>{t("تهيئة البيانات وفحص جودتها", "Prepares data and validates quality")}</small></span></div><div><b>02</b><span><strong>{t("إيجنت التحليل والحسابات", "Analysis & Calculation Agent")}</strong><small>{t("حساب المؤشرات واستخراج الاتجاهات", "Calculates KPIs and identifies trends")}</small></span></div><div><b>03</b><span><strong>{t("إيجنت الداشبورد والرؤى", "Dashboard & Insights Agent")}</strong><small>{t("اعتماد النتائج وتجهيز اللوحة", "Validates results and prepares the dashboard")}</small></span></div></section></main>;
 }
-// ======== نهاية التعديل ========
 
 function UploadPage({ onFile, loading }: { onFile: (file: File) => void; loading: boolean }) {
   const { t } = useLanguage();
@@ -237,6 +170,10 @@ function CleaningNotice({ audit, proposal = false }: { audit: CleaningAuditView;
 
 function PreviewPage({ preview, analyze }: { preview: Preview; analyze: (mode: "recommended" | "manual", overrides: MissingValueOverride[]) => void }) {
   const { t } = useLanguage();
+  // Older backend deployments may still return column null counts while
+  // omitting cleaning_audit from PreviewResponse. Reconstruct a conservative
+  // review audit from the actual preview rows so missing-value decisions never
+  // disappear silently. The backend audit remains authoritative when present.
   const fallbackAudit = useMemo<CleaningAuditView | null>(() => {
     const reportedMissing = preview.columns.reduce((sum, column) => sum + column.null_count, 0);
     const auditHasLocations = preview.cleaning_audit
