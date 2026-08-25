@@ -67,8 +67,9 @@ def purge_previous_data() -> None:
     Bayyinah now treats uploads and generated dashboards as session data, so a
     server reload starts with an empty private workspace.
     """
-    for path in UPLOAD_DIR.glob("*.xlsx"):
-        path.unlink(missing_ok=True)
+    for pattern in ("*.xlsx", "*.csv"):
+        for path in UPLOAD_DIR.glob(pattern):
+            path.unlink(missing_ok=True)
     for path in ANALYSIS_DIR.glob("*.json"):
         path.unlink(missing_ok=True)
     with _connect() as connection:

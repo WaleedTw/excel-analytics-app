@@ -1,9 +1,11 @@
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import Workbook
 
 from app.config import SAMPLE_DIR
-from app.excel_service import infer_columns, inspect_xlsx, preview_sheet, profile_quality, read_sheet
+from app.data_loader import preview_dataset
+from app.excel_service import infer_columns, profile_quality, read_sheet
 
 
 def test_reads_excel_and_detects_sheets(sales_record):
@@ -13,12 +15,12 @@ def test_reads_excel_and_detects_sheets(sales_record):
 
 
 def test_preview_and_semantic_inference(sales_record):
-    preview = preview_sheet(sales_record.file_id, "المبيعات")
+    preview = preview_dataset(sales_record.file_id, "المبيعات")
     roles = {column.name: column.semantic_role for column in preview.columns}
     assert roles["التاريخ"] == "date"
     assert roles["الإيرادات"] == "measure"
     assert roles["المدينة"] == "dimension"
-    assert len(preview.rows) == 50
+    assert len(preview.rows) == preview.total_rows
 
 
 def test_messy_quality_profile_detects_issues(messy_record):
@@ -34,7 +36,7 @@ def test_messy_quality_profile_detects_issues(messy_record):
 
 
 def test_ambiguous_column_is_detected(messy_record):
-    preview = preview_sheet(messy_record.file_id, "بيانات مختلطة")
+    preview = preview_dataset(messy_record.file_id, "بيانات مختلطة")
     ambiguous = [column.name for column in preview.columns if column.ambiguous]
     assert "رمز_س" in ambiguous
 
@@ -65,3 +67,26 @@ def test_whitespace_only_cells_are_counted_as_missing(tmp_path):
 
     assert company.null_count == 1
     assert company.unique_count == 2
+
+
+def test_formula_without_cached_value_is_preserved_for_safe_cleaning(tmp_path):
+    path = tmp_path / "formula.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "المبيعات"
+    sheet.append(["الكمية", "السعر", "الإجمالي"])
+    sheet.append([2, 10, "=A2*B2"])
+    workbook.save(path)
+
+    frame = read_sheet(path, "المبيعات")
+
+    assert frame.loc[0, "الإجمالي"] == "=A2*B2"
+
+
+def test_fully_empty_column_is_not_ambiguous():
+    frame = pd.DataFrame({"المبيعات": [10, 20], "ملاحظات": [None, None]})
+    profile = next(item for item in infer_columns(frame) if item.name == "ملاحظات")
+
+    assert profile.semantic_role == "unknown"
+    assert profile.ambiguous is False
+    assert "فارغ بالكامل" in profile.reason

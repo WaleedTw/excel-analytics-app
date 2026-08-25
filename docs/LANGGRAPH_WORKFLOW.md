@@ -1,26 +1,36 @@
-# سير LangGraph
+# سير LangGraph متعدد الإيجنتات
 
 ```mermaid
 flowchart TD
   S([Start]) --> V[validate_file]
-  V -->|غير صالح| H[handle_failure]
-  V --> I[inspect_workbook] --> T[detect_tables]
-  T -->|فارغ| H
-  T --> N[infer_semantics] --> A[detect_ambiguities]
-  A -->|غامض| Q[request_user_clarification / interrupt]
-  Q -->|Command resume| P[profile_dataset]
-  A -->|واضح| P
-  P --> C[create_analysis_plan] --> E[execute_analysis]
-  E --> R[validate_results]
-  R -->|صحيح| D[generate_dashboard_spec]
-  R -->|إعادة والمحاولات متبقية| E
-  R -->|بلغ الحد| F[fallback_analysis]
-  D --> G[generate_insights] --> SV[save_analysis] --> END([End])
+  V -->|صالح| I[inspect_data_file]
+  V -->|فشل| H[handle_failure]
+  I --> T[detect_tables]
+  T --> C1[Cleaning Agent: infer_semantics]
+  C1 --> A[detect_ambiguities]
+  A -->|غامض| Q[interrupt / clarification]
+  Q --> C2[Cleaning Agent: profile_dataset]
+  A -->|واضح| C2
+  C2 --> P[Analysis Agent: create_plan]
+  P --> E[Analysis Agent: execute]
+  E --> R[Dashboard Agent: validate]
+  R -->|صحيح| D[Dashboard Agent: finalize]
+  R -->|إعادة| E
+  R -->|بلغ الحد| F[fallback]
+  D --> G[generate_insights]
+  G --> SV[save_analysis]
+  SV --> END([End])
   F --> END
   H --> END
 ```
 
-الحالة TypedDict وتضم هوية الملف، الورقة، ملفات الأعمدة، الغموض، الربط، الجودة، الخطة، النتائج، DashboardSpec، المرحلة، التقدم، الأخطاء، عدد المحاولات، وسجل القرار. يستخدم InMemorySaver مع `thread_id=analysis_id`. عند الغموض تحفظ الحالة؛ تصبح قيمة `Command(resume=...)` جواب `interrupt()` عند إعادة دخول العقدة.
+## سجل التنفيذ
 
-حلقة recovery تعيد `validate_results` إلى `execute_analysis`. الحد من 1 إلى 5، وبعده يعمل fallback محلي محافظ.
+الحالة تحمل `agent_runs` بالإضافة إلى `trace`. كل سجل إيجنت يحتوي الاسم، المسؤولية، الحالة، الملخص، والمخرجات التي أنتجها. يعرض الفرونت إند أحدث سجل مكتمل لكل إيجنت، بينما يبقى السجل الكامل متاحًا في استجابة API لأغراض التدقيق.
 
+## الاستعادة والتحقق
+
+- يستخدم `thread_id = analysis_id` مع `InMemorySaver`.
+- يحفظ `interrupt()` الغموض الدلالي ويستأنف بـ`Command(resume=...)`.
+- يعاد تنفيذ إيجنت التحليل عند فشل DashboardSpec أو التحقق الرقمي حتى الحد المحدد.
+- بعد بلوغ الحد، يستخدم fallback محليًا محافظًا لا يعتمد على النموذج اللغوي.

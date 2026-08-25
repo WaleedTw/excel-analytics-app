@@ -27,10 +27,26 @@ export const dashboardSchema = z.object({
   executive_summary: z.string(), detailed_insights: z.array(z.object({ title: z.string(), text: z.string(), result_refs: z.array(z.string()) })),
   dimensions: z.array(z.string()).default([]), measures: z.array(z.string()).default([]),
 });
+const cleaningAuditSchema = z.object({
+  input_rows: z.number(), output_rows: z.number(), excluded_summary_rows: z.array(z.number()),
+  numeric_conversions: z.number(), date_conversions: z.number(), normalized_text_cells: z.number(),
+  invalid_numeric_cells: z.number(), invalid_date_cells: z.number(),
+  excluded_empty_columns: z.array(z.string()).default([]), formula_calculations: z.number().default(0),
+  missing_value_mode: z.enum(["recommended", "manual"]).default("recommended"),
+  missing_values_before: z.record(z.string(), z.number()).default({}),
+  missing_locations: z.record(z.string(), z.array(z.number())).default({}),
+  output_source_rows: z.array(z.number()).default([]),
+  remaining_missing_values: z.record(z.string(), z.number()).default({}),
+  imputation_actions: z.array(z.object({
+    column: z.string(), count: z.number(), strategy: z.enum(["derived", "sequential", "mean", "median", "label", "manual", "retained"]),
+    fill_value: z.union([z.string(), z.number()]).nullable(), source_rows: z.array(z.number()).default([]), explanation: z.string(),
+  })).default([]), removed_duplicate_rows: z.array(z.number()).default([]),
+  policy: z.string(),
+});
 export const previewSchema = z.object({
   file_id: z.string(), sheet_name: z.string(), total_rows: z.number(),
   columns: z.array(z.object({ name: z.string(), inferred_type: z.string(), semantic_role: z.string(), null_count: z.number(), unique_count: z.number(), sample_values: z.array(z.unknown()), ambiguous: z.boolean(), reason: z.string() })),
-  rows: z.array(z.record(z.string(), z.unknown())),
+  rows: z.array(z.record(z.string(), z.unknown())), cleaning_audit: cleaningAuditSchema.nullable().default(null),
 });
 export const analysisSchema = z.object({
   analysis_id: z.string(), status: z.enum(["queued", "running", "waiting_for_clarification", "completed", "completed_with_fallback", "failed"]),
@@ -45,9 +61,18 @@ export const analysisSchema = z.object({
     row_count: z.number(), column_count: z.number(), missing_cells: z.number(), missing_rate: z.number(),
     duplicate_rows: z.number(), invalid_values: z.number(), outlier_count: z.number(), formula_like_cells: z.number(),
     score: z.number(), notes: z.array(z.string()),
-  }).nullable(), trace: z.array(z.string()), error: z.string().nullable(),
+  }).nullable(), cleaning_audit: cleaningAuditSchema.nullable().default(null), trace: z.array(z.string()), error: z.string().nullable(),
+  agent_runs: z.array(z.object({
+    agent: z.enum(["cleaning_agent", "analysis_agent", "dashboard_agent"]),
+    label: z.string(), responsibility: z.string(), status: z.enum(["completed", "failed"]),
+    summary: z.string(), artifacts: z.array(z.string()),
+  })).default([]),
 });
 export const analysisAnswerSchema = z.object({ answer: z.string(), sources: z.array(z.string()) });
+export const customCalculationSchema = z.object({
+  name: z.string(), expression: z.string(), value: z.number(), format: z.enum(["percent", "decimal"]),
+  source_columns: z.array(z.string()), verification: z.string(), query: z.string(),
+});
 
 export type Workbook = z.infer<typeof workbookSchema>;
 export type Health = z.infer<typeof healthSchema>;
@@ -55,3 +80,4 @@ export type Preview = z.infer<typeof previewSchema>;
 export type Analysis = z.infer<typeof analysisSchema>;
 export type Dashboard = z.infer<typeof dashboardSchema>;
 export type AnalysisAnswer = z.infer<typeof analysisAnswerSchema>;
+export type CustomCalculation = z.infer<typeof customCalculationSchema>;

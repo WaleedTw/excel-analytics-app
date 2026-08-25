@@ -1,37 +1,55 @@
-import { analysisAnswerSchema, analysisSchema, healthSchema, previewSchema, workbookSchema } from "./schemas";
+import { analysisAnswerSchema, analysisSchema, customCalculationSchema, healthSchema, previewSchema, workbookSchema } from "./schemas";
+import type { Locale } from "./i18n";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001/api/v1";
 
-async function json<T>(response: Response, parser: { parse: (value: unknown) => T }): Promise<T> {
+async function json<T>(response: Response, parser: { parse: (value: unknown) => T }, locale: Locale): Promise<T> {
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof body.detail === "string" ? body.detail : "تعذر إكمال الطلب.");
+  if (!response.ok) throw new Error(typeof body.detail === "string" ? body.detail : locale === "ar" ? "تعذر إكمال الطلب." : "The request could not be completed.");
   return parser.parse(body);
 }
 
-export async function uploadWorkbook(file: File) {
+const withLocale = (path: string, locale: Locale) => `${path}${path.includes("?") ? "&" : "?"}locale=${locale}`;
+
+export async function uploadWorkbook(file: File, locale: Locale) {
   const data = new FormData(); data.append("file", file);
-  return json(await fetch(`${API}/files`, { method: "POST", body: data }), workbookSchema);
+  return json(await fetch(withLocale(`${API}/files`, locale), { method: "POST", body: data }), workbookSchema, locale);
 }
-export async function getHealth() {
-  return json(await fetch(`${API}/health`, { cache: "no-store" }), healthSchema);
+export async function getHealth(locale: Locale) {
+  return json(await fetch(withLocale(`${API}/health`, locale), { cache: "no-store" }), healthSchema, locale);
 }
-export async function loadSample(kind: "sales" | "messy") {
-  return json(await fetch(`${API}/samples/${kind}`, { method: "POST" }), workbookSchema);
+export async function loadSample(kind: "sales" | "messy", locale: Locale) {
+  return json(await fetch(withLocale(`${API}/samples/${kind}`, locale), { method: "POST" }), workbookSchema, locale);
 }
-export async function getPreview(fileId: string, sheet: string) {
-  return json(await fetch(`${API}/files/${fileId}/preview?sheet=${encodeURIComponent(sheet)}`), previewSchema);
+export async function getPreview(fileId: string, sheet: string, locale: Locale) {
+  return json(await fetch(withLocale(`${API}/files/${fileId}/preview?sheet=${encodeURIComponent(sheet)}`, locale)), previewSchema, locale);
 }
-export async function startAnalysis(fileId: string, sheetName: string, columnMapping: Record<string, string> = {}) {
-  return json(await fetch(`${API}/analyses`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: fileId, sheet_name: sheetName, max_iterations: 3, column_mapping: columnMapping }) }), analysisSchema);
+export type MissingValueOverride = { column: string; source_row: number; value: string };
+
+export async function startAnalysis(
+  fileId: string,
+  sheetName: string,
+  columnMapping: Record<string, string> = {},
+  missingValueMode: "recommended" | "manual" = "recommended",
+  missingValueOverrides: MissingValueOverride[] = [],
+  locale: Locale = "ar",
+) {
+  return json(await fetch(withLocale(`${API}/analyses`, locale), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: fileId, sheet_name: sheetName, max_iterations: 3, column_mapping: columnMapping, missing_value_mode: missingValueMode, missing_value_overrides: missingValueOverrides }) }), analysisSchema, locale);
 }
-export async function resumeAnalysis(analysisId: string, mappings: Record<string, string>) {
-  return json(await fetch(`${API}/analyses/${analysisId}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mappings }) }), analysisSchema);
+export async function resumeAnalysis(analysisId: string, mappings: Record<string, string>, locale: Locale) {
+  return json(await fetch(withLocale(`${API}/analyses/${analysisId}/resume`, locale), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mappings }) }), analysisSchema, locale);
 }
-export async function getAnalysis(analysisId: string) {
-  return json(await fetch(`${API}/analyses/${analysisId}`), analysisSchema);
+export async function getAnalysis(analysisId: string, locale: Locale) {
+  return json(await fetch(withLocale(`${API}/analyses/${analysisId}`, locale)), analysisSchema, locale);
 }
-export async function askAnalysis(analysisId: string, question: string) {
-  return json(await fetch(`${API}/analyses/${analysisId}/ask`, {
+export async function askAnalysis(analysisId: string, question: string, locale: Locale) {
+  return json(await fetch(withLocale(`${API}/analyses/${analysisId}/ask`, locale), {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }),
-  }), analysisAnswerSchema);
+  }), analysisAnswerSchema, locale);
+}
+
+export async function createCustomCalculation(analysisId: string, instruction: string, locale: Locale) {
+  return json(await fetch(withLocale(`${API}/analyses/${analysisId}/calculations`, locale), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction }),
+  }), customCalculationSchema, locale);
 }

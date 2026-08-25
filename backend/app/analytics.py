@@ -4,6 +4,7 @@ from typing import Any
 import duckdb
 import pandas as pd
 
+from app.data_cleaning import coerce_numeric_series
 from app.schemas import (
     ChartSeries, ChartSpec, DashboardSpec, FilterSpec, InsightSpec,
     KpiSpec, QualityReport, ResultValue, TableSpec,
@@ -16,9 +17,10 @@ TEMPORAL_NAMES = {
 }
 PERCENTAGE_NAMES = {"percentage", "percent", "rate", "margin", "النسبة", "نسبة"}
 CURRENCY_NAMES = {
-    "revenue", "sales", "cost", "profit", "amount", "value",
-    "إيراد", "ايراد", "تكلفة", "ربح", "مبيعات", "قيمة",
+    "revenue", "sales", "cost", "profit", "price", "amount", "value",
+    "إيراد", "ايراد", "تكلفة", "ربح", "سعر", "مبيعات", "قيمة",
 }
+CURRENCY_CODES = ("USD", "SAR", "AED", "EUR", "GBP", "KWD", "QAR", "BHD", "OMR")
 
 
 def _quoted(column: str) -> str:
@@ -52,6 +54,19 @@ def _aggregate(column: str) -> tuple[str, str, str]:
     return "SUM", "sum", "إجمالي"
 
 
+def _currency_code(columns: list[dict[str, Any]]) -> str:
+    currency_names = [
+        str(column["name"]) for column in columns
+        if column.get("semantic_role") == "measure" and _format_for(str(column["name"])) == "currency"
+    ]
+    for name in currency_names:
+        upper = name.upper()
+        for code in CURRENCY_CODES:
+            if re.search(rf"(?:^|[^A-Z]){code}(?:$|[^A-Z])", upper):
+                return code
+    return "SAR"
+
+
 def _ordered_names(available: list[str], preferred: list[str] | None) -> list[str]:
     preferred = preferred or []
     safe_preferred = [name for name in preferred if name in available]
@@ -63,7 +78,7 @@ def _clean_frame(frame: pd.DataFrame, columns: list[dict[str, Any]]) -> pd.DataF
     for profile in columns:
         name = profile["name"]
         if profile["semantic_role"] == "measure":
-            cleaned[name] = pd.to_numeric(cleaned[name], errors="coerce")
+            cleaned[name] = coerce_numeric_series(cleaned[name])[0]
         elif profile["semantic_role"] == "date":
             cleaned[name] = pd.to_datetime(cleaned[name], errors="coerce")
     return cleaned
@@ -678,7 +693,7 @@ def build_dashboard(
         title=f"تحليل {sheet_name}", description=agent_description,
         kpis=kpis, charts=charts, tables=[table], filters=filters,
         computed_results=registry,
-        value_formats={"currency": "SAR", "locale": "en-US"},
+        value_formats={"currency": _currency_code(columns), "locale": "en-US"},
         layout=["agent", "kpis", "charts", "quality", "table", "insights"],
         warnings=warnings, quality_notes=quality.notes,
         executive_summary=(

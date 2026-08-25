@@ -77,14 +77,16 @@ class QuestionIntent(BaseModel):
 
 
 QUESTION_SYSTEM_PROMPT = """أنت مخطط استعلامات بيانات، ولست آلة حاسبة.
-حوّل سؤال المستخدم إلى JSON مطابق للمخطط المرفق، اعتمادًا حصريًا على الأعمدة والقيم المتاحة.
+حوّل سؤال المستخدم إلى JSON مطابق للمخطط المرفق، اعتمادًا حصريًا على العواميد والقيم المتاحة.
 قواعد إلزامية:
 1. كل اسم شركة أو فئة أو سنة أو ربع يذكره المستخدم يجب أن يظهر في filters.
-2. استخدم اسم العمود والقيمة كما وردا حرفيًا في available_values، حتى لو كتب المستخدم ترجمة أو تهجئة عربية.
+2. استخدم اسم العامود والقيمة كما وردا حرفيًا في available_values، حتى لو كتب المستخدم ترجمة أو تهجئة عربية.
 3. إذا ذكر المستخدم اسمًا أو شرطًا غير موجود، ضعه في unresolved_terms واجعل answerable=false.
 4. لا تتجاهل أي كيان مذكور ولا تحوّل السؤال المقيد إلى إجمالي جميع الصفوف.
 5. لا تحسب النتيجة ولا تكتب SQL. اختر فقط العملية والمقياس والفلاتر والتجميع.
 6. إذا كان السؤال غامضًا أو لا تكفي البيانات للإجابة، اجعل answerable=false واشرح السبب بإيجاز.
+7. كلمات الربط التحليلية مثل «بين»، «حسب»، «عبر»، «لكل»، between، by، across ليست قيم فلاتر ولا كيانات.
+8. أسماء الأبعاد العامة مثل «الشركات» وCompany وCompanies، ووحدات القياس مثل SAR وUSD، لا توضع في unresolved_terms.
 العمليات المسموحة: aggregate, ranking, comparison, growth.
 التجميعات المسموحة: sum, average, min, max.
 أعد JSON فقط."""
@@ -105,6 +107,24 @@ QUARTER_WORDS = {
     3: ("q3", "الربع الثالث", "ربع ثالث", "الربع 3"),
     4: ("q4", "الربع الرابع", "ربع رابع", "الربع 4"),
 }
+DIMENSION_FAMILIES = (
+    (("product", "منتج"), ("product", "products", "منتج", "المنتج", "المنتجات")),
+    (("category", "فئه", "تصنيف"), ("category", "categories", "فئه", "الفئه", "تصنيف")),
+    (("region", "منطقه"), ("region", "regions", "منطقه", "المنطقه", "المناطق")),
+    (("city", "مدينه"), ("city", "cities", "مدينه", "المدينه", "المدن")),
+    (("customer", "client", "عميل"), ("customer", "client", "عميل", "العميل", "العملاء")),
+    (("status", "حاله"), ("status", "حاله", "الحاله")),
+    (("company", "brand", "شركه"), ("company", "companies", "brand", "brands", "شركه", "الشركه", "الشركات")),
+    (("year", "سنه", "عام"), ("year", "years", "سنه", "السنه", "عام")),
+    (("quarter", "ربع"), ("quarter", "quarters", "ربع", "الربع")),
+    (("date", "تاريخ"), ("date", "dates", "تاريخ")),
+)
+QUALITY_QUESTION_TERMS = (
+    "قيمة ناقصة", "قيم ناقصة", "مفقود", "ناقص", "تنظيف", "عالج", "تعويض",
+    "جودة البيانات", "معرف مفقود", "missing", "cleaning", "imputation", "quality",
+)
+FSI = "\u2068"
+PDI = "\u2069"
 
 
 def _normalize(value: Any) -> str:
@@ -129,6 +149,24 @@ def _find_column(names: list[str], terms: tuple[str, ...]) -> str | None:
         if score:
             scored.append((score, -index, name))
     return max(scored, default=(0, 0, ""))[2] or None
+
+
+def _requested_dimension(question: str, dimensions: list[str]) -> str | None:
+    q = _normalize(question)
+    for name in dimensions:
+        if _normalize(name) in q:
+            return name
+    for column_terms, question_terms in DIMENSION_FAMILIES:
+        if _contains_any(q, question_terms):
+            matched = _find_column(dimensions, column_terms)
+            if matched:
+                return matched
+    return None
+
+
+def _requested_limit(question: str, default: int) -> int:
+    match = re.search(r"(?:اعلي|افضل|اقل|top|bottom)\s*(\d{1,2})", _normalize(question))
+    return max(1, min(int(match.group(1)), 20)) if match else default
 
 
 def _select_measure(question: str, measures: list[str]) -> str:
@@ -274,7 +312,7 @@ def _validated_intent_plan(
     for requested_filter in intent.filters:
         column = _resolve_column_name(requested_filter.column, allowed_filters)
         if not column:
-            raise QuestionUnderstandingError(f"العمود «{requested_filter.column}» غير موجود في البيانات.")
+            raise QuestionUnderstandingError(f"العامود «{requested_filter.column}» غير موجود في البيانات.")
         actual_values = _actual_values(frame, column)
         resolved_values: list[Any] = []
         missing_values: list[str] = []
@@ -288,10 +326,10 @@ def _validated_intent_plan(
             available = "، ".join(str(value) for value in actual_values[:20])
             missing = "، ".join(f"«{value}»" for value in missing_values)
             raise QuestionUnderstandingError(
-                f"لا توجد معلومات كافية للإجابة بدقة. {missing} غير موجود في عمود {column}. القيم المتاحة: {available}."
+                f"لا توجد معلومات كافية للإجابة بدقة. {missing} غير موجود في عامود {column}. القيم المتاحة: {available}."
             )
         if not resolved_values:
-            raise QuestionUnderstandingError(f"لم يحدد السؤال قيمة واضحة لعمود {column}.")
+            raise QuestionUnderstandingError(f"لم يحدد السؤال قيمة واضحة لعامود {column}.")
         safe_filters.append(SafeFilter(column, tuple(resolved_values)))
 
     group_by = _resolve_column_name(intent.group_by, allowed_filters)
@@ -337,7 +375,7 @@ def _missing_known_company(question: str, frame: pd.DataFrame, column: str) -> s
 
 
 def _unmapped_company_tail(question: str, company_values: list[Any]) -> str | None:
-    """Refuse an unknown company phrase instead of silently removing it."""
+    """Return only a credible unknown company name, never analytical grammar."""
     q = _normalize(question)
     if any(_normalize(value) in q for value in company_values):
         return None
@@ -350,7 +388,20 @@ def _unmapped_company_tail(question: str, company_values: list[Any]) -> str | No
     candidate = match.group(1).strip().replace("؟", "").replace("?", "")
     ignored = {
         "الاجماليه", "اجماليه", "الاجمالي", "اجمالي", "الالكترونيه", "الكترونيه",
-        "الكل", "كل", "الشركات", "الشركه", "حسب", "كم", "هي",
+        "الكل", "كل", "جميع", "الشركات", "الشركه", "شركة", "حسب", "بحسب",
+        "بين", "عبر", "وفق", "وفقا", "لكل", "ضمن", "مقابل", "مع", "من", "على", "عن",
+        "قارن", "مقارنه", "مقارنة", "ترتيب", "اعلي", "الاعلي", "اقل", "الاقل",
+        "افضل", "اكبر", "الاكثر", "الاكثر", "كم", "هي",
+        "المنتج", "المنتجات", "الفئه", "الفئات", "المنطقه", "المناطق",
+        "المدينه", "المدن", "العميل", "العملاء", "الحاله", "التاريخ",
+        "company", "companies", "brand", "brands", "product", "products",
+        "category", "categories", "region", "regions", "city", "cities",
+        "customer", "customers", "year", "years", "quarter", "quarters",
+        "date", "dates", "by", "according", "between", "among", "across", "per",
+        "versus", "vs", "compare", "comparison", "rank", "ranking", "highest",
+        "lowest", "top", "bottom", "all", "total",
+        "sar", "usd", "riyal", "riyals", "currency", "amount", "value", "metric",
+        "ريال", "الريال", "سعودي", "السعودي", "عمله", "مبلغ", "قيمه", "مقياس",
     }
     remaining = [
         word for word in candidate.split()
@@ -399,6 +450,7 @@ def create_safe_query_plan(question: str, frame: pd.DataFrame, columns: list[dic
     company_column = _find_column(dimensions, ("company", "شركه", "brand"))
     year_column = _find_column(dimensions + dates, ("year", "سنه", "عام"))
     quarter_column = _find_column(dimensions, ("quarter", "ربع"))
+    requested_group = _requested_dimension(question, dimensions + dates)
 
     filters: list[SafeFilter] = []
     year = _resolve_year(question, frame, year_column)
@@ -423,10 +475,24 @@ def create_safe_query_plan(question: str, frame: pd.DataFrame, columns: list[dic
                 f"الشركات المتاحة: {available}."
             )
 
-    is_comparison = _contains_any(q, ("قارن", "مقارنه", "مقابل", "compare")) or len(company_values) > 1
+    mentioned_by_dimension = {
+        column: _mentioned_dimension_values(question, frame, column)
+        for column in dimensions
+        if column in frame.columns
+    }
+    for column, values in mentioned_by_dimension.items():
+        if values and column != company_column and not any(item.column == column for item in filters):
+            filters.append(SafeFilter(column, tuple(values)))
+
     is_growth = _contains_any(q, ("نمو", "تغير", "تطور", "growth"))
     is_top = _contains_any(q, ("اعلي", "اكبر", "افضل", "الاكثر", "top", "highest"))
     is_bottom = _contains_any(q, ("اقل", "ادني", "اضعف", "الاقل", "bottom", "lowest"))
+    comparison_column = next((column for column, values in mentioned_by_dimension.items() if len(values) > 1), None)
+    is_comparison = not (is_top or is_bottom) and (
+        _contains_any(q, ("قارن", "مقارنه", "مقابل", "compare", "حسب"))
+        or len(company_values) > 1
+        or comparison_column is not None
+    )
 
     aggregation: Aggregation = "average" if _contains_any(_normalize(measure), ("percentage", "percent", "rate", "نسبه")) else "sum"
     if _contains_any(q, ("متوسط", "average")):
@@ -437,21 +503,25 @@ def create_safe_query_plan(question: str, frame: pd.DataFrame, columns: list[dic
         aggregation = "min"
 
     if is_comparison:
-        if not company_column or len(company_values) < 2:
-            raise QuestionUnderstandingError("حدد فئتين واضحتين على الأقل لإجراء المقارنة.")
-        filters.append(SafeFilter(company_column, tuple(company_values)))
-        return SafeQueryPlan("comparison", measure, aggregation, tuple(filters), company_column, "desc", 10)
+        group_by = requested_group or comparison_column or (company_column if len(company_values) > 1 else None)
+        if not group_by:
+            raise QuestionUnderstandingError("حدد بُعد المقارنة مثل المنتج أو الفئة أو المنطقة.")
+        if group_by == company_column and company_values and not any(item.column == group_by for item in filters):
+            filters.append(SafeFilter(group_by, tuple(company_values)))
+        return SafeQueryPlan("comparison", measure, aggregation, tuple(filters), group_by, "desc", _requested_limit(question,10))
 
     if is_growth:
         time_column = year_column or (dates[0] if dates else None) or quarter_column
         if not time_column:
-            raise QuestionUnderstandingError("لا يوجد عمود زمني يسمح بحساب نسبة النمو.")
+            raise QuestionUnderstandingError("لا يوجد عامود زمني يسمح بحساب نسبة النمو.")
         if company_column and company_values:
             filters.append(SafeFilter(company_column, (company_values[0],)))
         return SafeQueryPlan("growth", measure, aggregation, tuple(filters), time_column=time_column)
 
     if is_top or is_bottom:
-        if _contains_any(q, ("شركه", "company")) and company_column:
+        if requested_group:
+            group_by = requested_group
+        elif _contains_any(q, ("شركه", "company")) and company_column:
             group_by = company_column
         elif _contains_any(q, ("ربع", "quarter")) and quarter_column:
             group_by = quarter_column
@@ -461,7 +531,7 @@ def create_safe_query_plan(question: str, frame: pd.DataFrame, columns: list[dic
             raise QuestionUnderstandingError("لم أجد بُعدًا تصنيفيًا مناسبًا للترتيب.")
         if company_column and company_values and group_by != company_column:
             filters.append(SafeFilter(company_column, (company_values[0],)))
-        return SafeQueryPlan("ranking", measure, aggregation, tuple(filters), group_by, "asc" if is_bottom else "desc", 1)
+        return SafeQueryPlan("ranking", measure, aggregation, tuple(filters), group_by, "asc" if is_bottom else "desc", _requested_limit(question,1))
 
     if company_column and company_values:
         filters.append(SafeFilter(company_column, (company_values[0],)))
@@ -471,10 +541,18 @@ def create_safe_query_plan(question: str, frame: pd.DataFrame, columns: list[dic
 def create_agent_query_plan(question: str, frame: pd.DataFrame, columns: list[dict[str, Any]]) -> SafeQueryPlan:
     """Understand semantically, validate locally, and only then allow calculation."""
     if LLM_PROVIDER == "groq" and GROQ_API_KEY:
-        intent = _groq_question_intent(question, frame, columns)
-        plan = _validated_intent_plan(intent, frame, columns)
-        _validate_question_coverage(question, plan, frame, columns)
-        return plan
+        try:
+            intent = _groq_question_intent(question, frame, columns)
+            plan = _validated_intent_plan(intent, frame, columns)
+            _validate_question_coverage(question, plan, frame, columns)
+            return plan
+        except QuestionUnderstandingError:
+            # Business questions that fit the verified local grammar must remain
+            # answerable when the semantic service mistakes a unit such as SAR for
+            # a filter, returns malformed JSON, or is temporarily unavailable.
+            # The deterministic planner applies the same allow-list and rejects
+            # genuinely unknown entities instead of broadening the query silently.
+            return create_safe_query_plan(question, frame, columns)
     return create_safe_query_plan(question, frame, columns)
 
 
@@ -516,7 +594,7 @@ def _validate_question_coverage(
 
 def _quoted(identifier: str, allowed: set[str]) -> str:
     if identifier not in allowed:
-        raise QuestionUnderstandingError("رفض النظام عمودًا غير موجود في البيانات.")
+        raise QuestionUnderstandingError("رفض النظام عامودًا غير موجود في البيانات.")
     return f'"{identifier.replace(chr(34), chr(34) * 2)}"'
 
 
@@ -605,22 +683,83 @@ def _verify_plan_result(plan: SafeQueryPlan, frame: pd.DataFrame, rows: list[dic
             raise QuestionUnderstandingError("فشل التحقق المستقل من إحدى النتائج المجمعة.")
 
 
-def _format_number(value: float, measure: str, percent: bool = False) -> str:
+def _format_number(value: float, measure: str, percent: bool = False, locale: Literal["ar", "en"] = "ar") -> str:
     if percent:
         return f"{value:,.2f}%"
     normalized = _normalize(measure)
-    suffix = " ريال" if _contains_any(normalized, ("revenue", "sales", "ايراد", "مبيعات", "sar")) else ""
+    is_currency = _contains_any(normalized, ("revenue", "sales", "ايراد", "مبيعات", "sar"))
+    suffix = (" SAR" if locale == "en" else " ريال") if is_currency else ""
     absolute = abs(value)
     if absolute >= 1_000_000_000:
-        return f"{value / 1_000_000_000:,.2f} مليار{suffix}"
+        unit = " billion" if locale == "en" else " مليار"
+        return f"{value / 1_000_000_000:,.2f}{unit}{suffix}"
     if absolute >= 1_000_000:
-        return f"{value / 1_000_000:,.2f} مليون{suffix}"
+        unit = " million" if locale == "en" else " مليون"
+        return f"{value / 1_000_000:,.2f}{unit}{suffix}"
     return f"{value:,.2f}{suffix}"
 
 
-def _filter_description(filters: tuple[SafeFilter, ...]) -> str:
-    parts = [f"{item.column}={', '.join(str(value) for value in item.values)}" for item in filters]
-    return "، ".join(parts) if parts else "جميع الصفوف"
+def _display(value: Any, locale: Literal["ar", "en"] = "ar") -> str:
+    """Isolate injected data tokens so mixed Arabic/Latin output keeps its visual order."""
+    text = str(value)
+    return text if locale == "en" else f"{FSI}{text}{PDI}"
+
+
+def _field_label(value: str | None, locale: Literal["ar", "en"], kind: Literal["dimension", "measure"]) -> str:
+    if not value or locale == "en":
+        return str(value or "")
+    normalized = _normalize(value)
+    if kind == "dimension":
+        families = (
+            (("company", "brand", "شركه"), "الشركات"),
+            (("product", "منتج"), "المنتجات"),
+            (("category", "segment", "فئه", "تصنيف"), "الفئات"),
+            (("region", "منطقه"), "المناطق"),
+            (("city", "مدينه"), "المدن"),
+            (("customer", "client", "عميل"), "العملاء"),
+            (("year", "سنه", "عام"), "السنوات"),
+            (("quarter", "ربع"), "الأرباع"),
+            (("date", "تاريخ"), "التواريخ"),
+        )
+        for terms,label in families:
+            if _contains_any(normalized, terms):
+                return label
+    if _contains_any(normalized, ("ecom", "e com", "online", "الكتروني")) and _contains_any(normalized, ("revenue", "sales", "ايراد", "مبيعات")):
+        return "إيرادات التجارة الإلكترونية"
+    if _contains_any(normalized, ("revenue", "sales", "ايراد", "مبيعات")):
+        return "إجمالي الإيرادات"
+    if _contains_any(normalized, ("profit", "ربح")):
+        return "إجمالي الأرباح"
+    if _contains_any(normalized, ("percentage", "percent", "rate", "نسبه")):
+        return "النسبة"
+    if _contains_any(normalized, ("quantity", "count", "كميه")):
+        return "الكمية"
+    if _contains_any(normalized, ("price", "cost", "سعر", "تكلفه")):
+        return "السعر"
+    return _display(value, locale)
+
+
+def _filter_description(filters: tuple[SafeFilter, ...], locale: Literal["ar", "en"] = "ar") -> str:
+    parts = [(
+        f"{_field_label(item.column, locale, 'dimension')}: "
+        f"{_display(', '.join(str(value) for value in item.values), locale)}"
+        if locale == "ar" else
+        f"{item.column}={', '.join(str(value) for value in item.values)}"
+    ) for item in filters]
+    separator = ", " if locale == "en" else "، "
+    return separator.join(parts) if parts else ("All rows" if locale == "en" else "جميع الصفوف")
+
+
+def _english_cleaning_explanation(strategy: str) -> str:
+    return {
+        "derived": "recalculated from a verified row-level relationship",
+        "sequential": "completed from the confirmed identifier sequence",
+        "mean": "filled with the mean of valid monetary values",
+        "median": "filled with the median of valid numeric values",
+        "label": "labeled Unspecified without inventing a category",
+        "manual": "replaced with the user-entered value",
+        "retained": "left missing for review because an automatic value would be unsupported",
+    }.get(strategy, "handled using the documented cleaning policy")
 
 
 def answer_data_question(
@@ -628,28 +767,116 @@ def answer_data_question(
     frame: pd.DataFrame,
     columns: list[dict[str, Any]],
     dashboard: DashboardSpec,
+    cleaning_audit: dict[str, Any] | None = None,
+    locale: Literal["ar", "en"] = "ar",
 ) -> dict[str, Any]:
     del dashboard  # The verified dataset is the numeric source for this tool.
+    normalized_question = _normalize(question)
+    if cleaning_audit and _contains_any(normalized_question, QUALITY_QUESTION_TERMS):
+        missing = cleaning_audit.get("missing_values_before", {})
+        actions = cleaning_audit.get("imputation_actions", [])
+        remaining = cleaning_audit.get("remaining_missing_values", {})
+        if not missing:
+            excluded = len(cleaning_audit.get("excluded_summary_rows", []))
+            if locale == "en":
+                detail = f" {excluded} structural summary row(s) were excluded." if excluded else ""
+                return {
+                    "answer": f"No missing values were detected in the actual data rows after cleaning.{detail}",
+                    "sources": ["Data Cleaning Agent audit", "Clean analysis copy"],
+                }
+            detail = f" واستُبعد {excluded} صف إجمالي بنيوي." if excluded else ""
+            return {
+                "answer": f"لم تُرصد قيم ناقصة في صفوف البيانات الفعلية بعد التنظيف.{detail}",
+                "sources": ["سجل إيجنت تنظيف البيانات", "نسخة التحليل المنظفة"],
+            }
+        if locale == "en":
+            action_text = " ".join(
+                f"Column “{item['column']}”: {item['count']} value(s) in Excel row(s) "
+                f"{', '.join(str(row) for row in item.get('source_rows', [])) or 'not specified'}; "
+                f"{_english_cleaning_explanation(str(item.get('strategy', '')))}."
+                for item in actions
+            )
+            remaining_text = (
+                " Remaining for review: " + ", ".join(f"{column} ({count})" for column,count in remaining.items()) + "."
+                if remaining else " No untreated missing values remain."
+            )
+            return {
+                "answer": f"The Data Cleaning Agent detected {sum(missing.values())} missing value(s) in: "
+                          f"{', '.join(f'{column} ({count})' for column,count in missing.items())}. "
+                          f"{action_text}{remaining_text}",
+                "sources": ["Missing-value treatment audit", "Deterministic imputation policy", "Clean analysis copy"],
+            }
+        action_text = " ".join(
+            f"عامود «{_display(item['column'], locale)}»: {_display(item['count'], locale)} قيمة"
+            f" في صفوف Excel {_display(', '.join(str(row) for row in item.get('source_rows', [])) or 'غير محددة', locale)}؛ "
+            f"{item['explanation']}"
+            for item in actions
+        )
+        remaining_text = (
+            " بقيت للمراجعة: " + "، ".join(f"{_display(column, locale)} ({_display(count, locale)})" for column,count in remaining.items()) + "."
+            if remaining else " لم تبقَ قيم ناقصة غير معالجة."
+        )
+        return {
+            "answer": f"رصد إيجنت التنظيف {_display(sum(missing.values()), locale)} قيمة ناقصة في: "
+                      f"{', '.join(f'{_display(column, locale)} ({_display(count, locale)})' for column,count in missing.items())}. "
+                      f"{action_text}{remaining_text}",
+            "sources": ["سجل معالجة القيم الناقصة", "سياسة التعويض الحتمية", "نسخة التحليل المنظفة"],
+        }
     plan = create_agent_query_plan(question, frame, columns)
     result = execute_safe_plan(plan, frame)
-    aggregation_label = {"sum": "إجمالي", "average": "متوسط", "min": "أدنى", "max": "أعلى"}[plan.aggregation]
-    filters = _filter_description(plan.filters)
+    aggregation_label = (
+        {"sum": "Total", "average": "Average", "min": "Minimum", "max": "Maximum"}[plan.aggregation]
+        if locale == "en" else
+        {"sum": "إجمالي", "average": "متوسط", "min": "أدنى", "max": "أعلى"}[plan.aggregation]
+    )
+    filters = _filter_description(plan.filters, locale)
+    measure_label = _field_label(plan.measure, locale, "measure")
+    group_label = _field_label(plan.group_by or plan.time_column, locale, "dimension")
 
     if plan.operation == "aggregate":
-        value = _format_number(result.rows[0]["value"], plan.measure)
-        answer = f"بلغ {aggregation_label} {plan.measure} وفق الشروط ({filters}) مقدار {value}."
+        value = _display(_format_number(result.rows[0]["value"], plan.measure, locale=locale), locale)
+        answer = (
+            f"{aggregation_label} {plan.measure} is {value} for the selected scope ({filters})."
+            if locale == "en" else
+            f"{measure_label} — {aggregation_label}: {value}.\nالنطاق: {filters}."
+        )
     elif plan.operation == "ranking":
         row = result.rows[0]
-        value = _format_number(row["value"], plan.measure)
-        direction = "الأعلى" if plan.order == "desc" else "الأقل"
-        answer = f"{direction} حسب {plan.group_by} هو «{row['label']}» بقيمة {value} لمقياس {plan.measure} وفق الشروط ({filters})."
+        direction = ("highest" if plan.order == "desc" else "lowest") if locale == "en" else ("الأعلى" if plan.order == "desc" else "الأقل")
+        if len(result.rows) == 1:
+            value = _display(_format_number(row["value"], plan.measure, locale=locale), locale)
+            answer = (
+                f"The {direction} {plan.group_by} is “{row['label']}” at {value} for {plan.measure}, using {filters}."
+                if locale == "en" else
+                f"{direction} حسب {group_label}: {_display(row['label'], locale)} — {value}.\nالنطاق: {filters}."
+            )
+        else:
+            separator = ", " if locale == "en" else "\n"
+            details = separator.join(
+                f"{index}. {_display(item['label'], locale)} — {_display(_format_number(item['value'], plan.measure, locale=locale), locale)}"
+                for index,item in enumerate(result.rows,1)
+            )
+            answer = (
+                f"Ranking from {direction} by {plan.group_by}: {details}. Scope: {filters}."
+                if locale == "en" else
+                f"الترتيب من {direction} حسب {group_label} وفق {measure_label}:\n{details}\nالنطاق: {filters}."
+            )
     elif plan.operation == "comparison":
         if len(result.rows) < 2:
             raise QuestionUnderstandingError("لا تتوفر نتيجتان مكتملتان لإجراء المقارنة.")
-        details = " مقابل ".join(f"«{row['label']}»: {_format_number(row['value'], plan.measure)}" for row in result.rows)
+        details = (" versus " if locale == "en" else "\n").join(
+            f"“{_display(row['label'], locale)}”: {_display(_format_number(row['value'], plan.measure, locale=locale), locale)}"
+            for row in result.rows
+        )
         leader, runner = result.rows[0], result.rows[1]
         difference = leader["value"] - runner["value"]
-        answer = f"المقارنة وفق الشروط ({filters}): {details}. الأعلى «{leader['label']}» بفارق {_format_number(difference, plan.measure)}."
+        answer = (
+            f"Comparison for {filters}: {details}. “{leader['label']}” leads by {_format_number(difference, plan.measure, locale=locale)}."
+            if locale == "en" else
+            f"مقارنة {measure_label} حسب {group_label}:\n{details}\n"
+            f"الأعلى: {_display(leader['label'], locale)} بفارق {_display(_format_number(difference, plan.measure, locale=locale), locale)}.\n"
+            f"النطاق: {filters}."
+        )
     else:
         if len(result.rows) < 2:
             raise QuestionUnderstandingError("تحتاج نسبة النمو إلى فترتين على الأقل.")
@@ -657,16 +884,28 @@ def answer_data_question(
         if math.isclose(first["value"], 0.0, abs_tol=1e-12):
             raise QuestionUnderstandingError("لا يمكن حساب نسبة النمو لأن قيمة الفترة الأولى تساوي صفرًا.")
         growth = (last["value"] - first["value"]) / abs(first["value"]) * 100
-        direction = "نموًا" if growth >= 0 else "انخفاضًا"
-        answer = (
-            f"سجل {plan.measure} {direction} بنسبة {_format_number(growth, plan.measure, percent=True)} "
-            f"من «{first['label']}» ({_format_number(first['value'], plan.measure)}) إلى «{last['label']}» "
-            f"({_format_number(last['value'], plan.measure)}) وفق الشروط ({filters})."
-        )
+        if locale == "en":
+            direction = "increased" if growth >= 0 else "decreased"
+            answer = (
+                f"{plan.measure} {direction} by {_format_number(growth, plan.measure, percent=True, locale=locale)} "
+                f"from “{first['label']}” ({_format_number(first['value'], plan.measure, locale=locale)}) to “{last['label']}” "
+                f"({_format_number(last['value'], plan.measure, locale=locale)}) for {filters}."
+            )
+        else:
+            direction = "نموًا" if growth >= 0 else "انخفاضًا"
+            answer = (
+                f"سجل {measure_label} {direction} بنسبة {_display(_format_number(growth, plan.measure, percent=True, locale=locale), locale)} "
+                f"من «{_display(first['label'], locale)}» ({_display(_format_number(first['value'], plan.measure, locale=locale), locale)}) إلى «{_display(last['label'], locale)}» "
+                f"({_display(_format_number(last['value'], plan.measure, locale=locale), locale)}) وفق الشروط ({filters})."
+            )
 
-    sources = [
-        f"حساب موثق: {aggregation_label} {plan.measure}",
-        f"الفلاتر: {filters}",
-        "تحقق مزدوج: DuckDB وPandas",
-    ]
+    sources = ([
+        f"Verified calculation: {aggregation_label} {plan.measure}",
+        f"Filters: {filters}",
+        "Dual verification: DuckDB and Pandas",
+    ] if locale == "en" else [
+        f"حساب موثق: {measure_label} ({aggregation_label})",
+        f"النطاق: {filters}",
+        f"تحقق مزدوج: {_display('DuckDB + Pandas', locale)}",
+    ])
     return {"answer": answer, "sources": sources}

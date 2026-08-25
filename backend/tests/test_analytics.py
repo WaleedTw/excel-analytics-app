@@ -1,6 +1,7 @@
 import pytest
 import pandas as pd
 
+from app.agents import CleaningAgent
 from app.analytics import assert_numeric_provenance, build_dashboard, execute_deterministic_analysis
 from app.config import SAMPLE_DIR
 from app.excel_service import infer_columns, profile_quality, read_sheet
@@ -67,3 +68,28 @@ def test_agent_plan_prioritizes_safe_measure_and_builds_business_charts():
     assert charts[1].id == "category-bar"
     assert charts[1].series[0].name == "Ecom_Revenue"
     assert kpis[2].label == "إجمالي Ecom_Revenue"
+
+
+def test_cleaned_currency_columns_produce_nonzero_usd_dashboard_metrics():
+    source = pd.DataFrame({
+        "Product ID": [1001, 1002, "Total Summary"],
+        "Category": ["Electronics", "Electronics", None],
+        "Product Name": ["Phone", "Monitor", None],
+        "Unit Price (USD)": ["$1,200.00", "$950.00", "$1,075.00 (Avg)"],
+        "Quantity Sold": [12, 8, "20"],
+        "Total Sales (USD)": ["$14,400.00", "$7,600.00", "$22,000.00"],
+    })
+    cleaning = CleaningAgent().run(source)
+    dashboard = build_dashboard(
+        cleaning.frame,
+        [column.model_dump() for column in cleaning.columns],
+        cleaning.quality,
+        "Sales",
+    )
+
+    assert dashboard.computed_results["sum.Unit Price (USD)"].value == pytest.approx(2150)
+    assert dashboard.computed_results["sum.Quantity Sold"].value == pytest.approx(20)
+    assert dashboard.computed_results["sum.Total Sales (USD)"].value == pytest.approx(22000)
+    assert dashboard.computed_results["metric.average.Unit Price (USD)"].value == pytest.approx(1075)
+    assert dashboard.computed_results["rows.total"].value == 2
+    assert dashboard.value_formats["currency"] == "USD"

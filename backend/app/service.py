@@ -6,12 +6,23 @@ from uuid import uuid4
 
 from langgraph.types import Command
 
+from app.agents import CleaningAgent
 from app.config import DEFAULT_MAX_ITERATIONS, UPLOAD_DIR
 from app.agent import answer_analysis_question
-from app.excel_service import file_path_for, read_sheet
+from app.custom_calculations import execute_custom_calculation
+from app.data_loader import file_path_for, read_dataset
 from app.graph import build_analysis_graph
+from app.i18n import Locale, translate_error
 from app.question_agent import QuestionUnderstandingError, answer_data_question
-from app.schemas import AnalysisAnswer, AnalysisQuestion, AnalysisResponse, AnalysisStart, ClarificationAnswer
+from app.schemas import (
+    AnalysisAnswer,
+    AnalysisQuestion,
+    AnalysisResponse,
+    AnalysisStart,
+    ClarificationAnswer,
+    CustomCalculationRequest,
+    CustomCalculationResponse,
+)
 from app.storage import delete_file_record, get_file_record
 
 
@@ -21,6 +32,7 @@ TERMINAL_STATUSES = {"completed", "completed_with_fallback", "failed"}
 class AnalysisService:
     def __init__(self, graph=None) -> None:
         self.graph = graph or build_analysis_graph()
+        self.cleaning_agent = CleaningAgent()
         self.runs: dict[str, AnalysisResponse] = {}
         self.analysis_files: dict[str, str] = {}
         self.analysis_datasets: dict[str, dict[str, Any]] = {}
@@ -45,7 +57,8 @@ class AnalysisService:
             analysis_id=analysis_id, status=status, stage=result.get("stage", "unknown"),
             progress=result.get("progress", 0), ambiguity=ambiguity, dashboard=result.get("dashboard"),
             analysis_plan=result.get("analysis_plan"), quality=result.get("quality"),
-            trace=result.get("trace", []), error=result.get("error") or None,
+            cleaning_audit=result.get("cleaning_audit"),
+            agent_runs=result.get("agent_runs", []), trace=result.get("trace", []), error=result.get("error") or None,
         )
         with self.lock:
             self.runs[analysis_id] = response
@@ -63,6 +76,8 @@ class AnalysisService:
             "file_path": str(file_path_for(request.file_id)), "original_name": record["original_name"],
             "mime_type": record["mime_type"], "file_size": record["size_bytes"],
             "sheet_name": request.sheet_name, "column_mapping": request.column_mapping,
+            "missing_value_mode": request.missing_value_mode,
+            "missing_value_overrides": [item.model_dump() for item in request.missing_value_overrides],
             "iteration": 0, "max_iterations": request.max_iterations or DEFAULT_MAX_ITERATIONS,
             "status": "running", "stage": "queued", "progress": 0, "trace": [],
         }
@@ -71,8 +86,8 @@ class AnalysisService:
         file_id = self.analysis_files.pop(analysis_id, None)
         if not file_id:
             return
-        path = UPLOAD_DIR / f"{file_id}.xlsx"
-        path.unlink(missing_ok=True)
+        for suffix in (".xlsx", ".csv"):
+            (UPLOAD_DIR / f"{file_id}{suffix}").unlink(missing_ok=True)
         delete_file_record(file_id)
 
     def _cache_analysis_dataset(self, analysis_id: str, state: dict[str, Any]) -> None:
@@ -80,10 +95,17 @@ class AnalysisService:
         if state.get("status") not in {"completed", "completed_with_fallback"}:
             return
         path = Path(state["file_path"])
-        frame = read_sheet(path, state["sheet_name"])
+        source_frame = read_dataset(path, state["sheet_name"])
+        cleaning = self.cleaning_agent.run(
+            source_frame,
+            state.get("column_mapping", {}),
+            state.get("missing_value_mode", "recommended"),
+            state.get("missing_value_overrides", []),
+        )
         context = {
-            "frame": frame,
-            "columns": list(state.get("columns", [])),
+            "frame": cleaning.frame,
+            "columns": [column.model_dump() for column in cleaning.columns],
+            "cleaning_audit": cleaning.audit.model_dump(),
         }
         with self.lock:
             self.analysis_datasets[analysis_id] = context
@@ -190,7 +212,7 @@ class AnalysisService:
             raise KeyError(analysis_id)
         return current
 
-    def ask(self, analysis_id: str, request: AnalysisQuestion) -> AnalysisAnswer:
+    def ask(self, analysis_id: str, request: AnalysisQuestion, locale: Locale = "ar") -> AnalysisAnswer:
         current = self.get(analysis_id)
         if current.status not in {"completed", "completed_with_fallback"} or not current.dashboard:
             raise ValueError("لا يمكن طرح سؤال قبل اكتمال التحليل.")
@@ -203,11 +225,31 @@ class AnalysisService:
                     context["frame"],
                     context["columns"],
                     current.dashboard,
+                    context.get("cleaning_audit"),
+                    locale,
                 )
                 return AnalysisAnswer.model_validate(answer)
             except QuestionUnderstandingError as exc:
                 return AnalysisAnswer(
-                    answer=str(exc),
-                    sources=["وكيل الاستعلامات الآمنة"],
+                    answer=translate_error(str(exc), locale) if locale == "en" else str(exc),
+                    sources=["Verified query agent" if locale == "en" else "وكيل الاستعلامات الآمنة"],
                 )
-        return AnalysisAnswer.model_validate(answer_analysis_question(request.question, current.dashboard))
+        return AnalysisAnswer.model_validate(answer_analysis_question(request.question, current.dashboard, locale))
+
+    def calculate(
+        self,
+        analysis_id: str,
+        request: CustomCalculationRequest,
+    ) -> CustomCalculationResponse:
+        current = self.get(analysis_id)
+        if current.status not in {"completed", "completed_with_fallback"}:
+            raise ValueError("لا يمكن إنشاء حساب مخصص قبل اكتمال التحليل.")
+        with self.lock:
+            context = self.analysis_datasets.get(analysis_id)
+        if not context:
+            raise ValueError("انتهت جلسة البيانات المؤقتة؛ نفّذ تحليلًا جديدًا لإنشاء الحساب.")
+        return execute_custom_calculation(
+            request,
+            context["frame"],
+            context["columns"],
+        )

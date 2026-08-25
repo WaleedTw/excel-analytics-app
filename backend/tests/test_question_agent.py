@@ -64,7 +64,8 @@ def ask(question: str):
 def test_jarir_revenue_in_2022_is_computed_from_four_quarters():
     answer = ask("كم إيرادات جرير في 2022؟")
     assert "9.39 مليار ريال" in answer["answer"]
-    assert "Company=Jarir" in answer["answer"]
+    assert "الشركات" in answer["answer"]
+    assert "Jarir" in answer["answer"]
 
 
 def test_top_company_in_third_quarter():
@@ -80,6 +81,102 @@ def test_compare_jarir_and_nahdi_in_2024():
     assert "2024" in answer["answer"]
 
 
+def test_generic_company_dimension_is_not_mistaken_for_an_unknown_company():
+    plan = create_safe_query_plan(
+        "قارن Total Revenue حسب Company",
+        business_frame(),
+        COLUMNS,
+    )
+
+    assert plan.operation == "comparison"
+    assert plan.group_by == "Company"
+    assert plan.filters == ()
+
+
+@pytest.mark.parametrize("question", [
+    "قارن إجمالي الإيرادات بين الشركات",
+    "قارن إجمالي الإيرادات عبر الشركات",
+    "Compare total revenue between companies",
+])
+def test_comparison_connectors_are_not_mistaken_for_company_names(question):
+    plan = create_safe_query_plan(question, business_frame(), COLUMNS)
+
+    assert plan.operation == "comparison"
+    assert plan.group_by == "Company"
+    assert plan.measure == "Total Revenue (SAR)"
+    assert plan.filters == ()
+
+
+def test_compare_all_companies_returns_verified_results():
+    result = ask("قارن إجمالي الإيرادات بين الشركات")
+
+    assert "مقارنة إجمالي الإيرادات حسب الشركات" in result["answer"]
+    assert all(company in result["answer"] for company in ("Jarir", "Nahdi", "SACO"))
+
+
+def test_currency_suffix_is_not_mistaken_for_an_unknown_company():
+    plan = create_safe_query_plan(
+        "ما أعلى 3 Company حسب Total Revenue (SAR)؟",
+        business_frame(),
+        COLUMNS,
+    )
+
+    assert plan.operation == "ranking"
+    assert plan.group_by == "Company"
+    assert plan.measure == "Total Revenue (SAR)"
+    assert plan.limit == 3
+
+
+def test_verified_planner_recovers_when_semantic_service_mistakes_currency_for_entity(monkeypatch):
+    monkeypatch.setattr(question_agent, "LLM_PROVIDER", "groq")
+    monkeypatch.setattr(question_agent, "GROQ_API_KEY", "test-key")
+    monkeypatch.setattr(
+        question_agent,
+        "_groq_question_intent",
+        lambda *_args, **_kwargs: QuestionIntent(
+            answerable=False,
+            reason="SAR was treated as an unknown company.",
+            unresolved_terms=["SAR"],
+        ),
+    )
+
+    plan = create_agent_query_plan(
+        "ما أعلى 3 Company حسب Total Revenue (SAR)؟",
+        business_frame(),
+        COLUMNS,
+    )
+
+    assert plan.operation == "ranking"
+    assert plan.group_by == "Company"
+    assert plan.measure == "Total Revenue (SAR)"
+    assert plan.limit == 3
+
+
+def test_verified_planner_recovers_when_semantic_service_mistakes_between_for_entity(monkeypatch):
+    monkeypatch.setattr(question_agent, "LLM_PROVIDER", "groq")
+    monkeypatch.setattr(question_agent, "GROQ_API_KEY", "test-key")
+    monkeypatch.setattr(
+        question_agent,
+        "_groq_question_intent",
+        lambda *_args, **_kwargs: QuestionIntent(
+            answerable=False,
+            reason="The comparison connector was treated as an unknown company.",
+            unresolved_terms=["بين"],
+        ),
+    )
+
+    plan = create_agent_query_plan(
+        "قارن إجمالي الإيرادات بين الشركات",
+        business_frame(),
+        COLUMNS,
+    )
+
+    assert plan.operation == "comparison"
+    assert plan.group_by == "Company"
+    assert plan.measure == "Total Revenue (SAR)"
+    assert plan.filters == ()
+
+
 def test_ecommerce_growth_uses_first_and_last_year():
     plan = create_safe_query_plan("كم نسبة نمو المبيعات الإلكترونية؟", business_frame(), COLUMNS)
     assert plan.operation == "growth"
@@ -92,12 +189,55 @@ def test_ecommerce_growth_uses_first_and_last_year():
 def test_lowest_quarter_for_saco():
     answer = ask("ما أقل ربع أداءً لدى ساكو؟")
     assert "Q4" in answer["answer"]
-    assert "Company=SACO" in answer["answer"]
+    assert "SACO" in answer["answer"]
 
 
 def test_every_verified_answer_reports_duckdb_and_pandas_check():
     answer = ask("كم إيرادات جرير في 2022؟")
-    assert "تحقق مزدوج: DuckDB وPandas" in answer["sources"]
+    assert any("DuckDB + Pandas" in source for source in answer["sources"])
+
+
+def test_top_three_request_returns_three_verified_ranked_items():
+    answer = ask("ما أعلى 3 شركات حسب إجمالي الإيرادات؟")
+    assert "1." in answer["answer"]
+    assert "2." in answer["answer"]
+    assert "3." in answer["answer"]
+    assert all(company in answer["answer"] for company in ("Jarir", "Nahdi", "SACO"))
+
+
+def test_cleaning_question_explains_columns_rows_and_actions():
+    audit = {
+        "missing_values_before": {"Product ID": 1, "Total Sales": 1},
+        "missing_locations": {"Product ID": [9], "Total Sales": [5]},
+        "remaining_missing_values": {},
+        "excluded_summary_rows": [62],
+        "imputation_actions": [
+            {
+                "column": "Product ID", "count": 1, "strategy": "sequential",
+                "fill_value": "تسلسل رقمي بزيادة 1", "source_rows": [9],
+                "explanation": "أُكمل المعرّف من النمط التصاعدي المثبت.",
+            },
+            {
+                "column": "Total Sales", "count": 1, "strategy": "derived",
+                "fill_value": "Quantity Sold × Unit Price", "source_rows": [5],
+                "explanation": "أُعيد بناء الإجمالي من الكمية مضروبة في سعر الوحدة.",
+            },
+        ],
+    }
+
+    result = answer_data_question(
+        "ما القيم الناقصة وكيف عولجت؟",
+        business_frame(),
+        COLUMNS,
+        dashboard(),
+        audit,
+    )
+
+    assert "Product ID" in result["answer"]
+    assert "Total Sales" in result["answer"]
+    assert "صفوف Excel 9" in result["answer"]
+    assert "صفوف Excel 5" in result["answer"]
+    assert "لم تبقَ قيم ناقصة" in result["answer"]
 
 
 def test_unknown_company_is_not_silently_replaced_with_all_rows():
@@ -176,4 +316,4 @@ def test_analysis_service_routes_completed_questions_to_verified_dataset_agent()
     answer = service.ask(analysis_id, AnalysisQuestion(question="كم إيرادات جرير في 2022؟"))
 
     assert "9.39 مليار ريال" in answer.answer
-    assert "تحقق مزدوج: DuckDB وPandas" in answer.sources
+    assert any("DuckDB + Pandas" in source for source in answer.sources)

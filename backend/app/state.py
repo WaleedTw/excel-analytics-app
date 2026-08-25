@@ -15,7 +15,10 @@ class AnalysisState(TypedDict, total=False):
     columns: list[dict[str, Any]]
     ambiguous_columns: list[dict[str, Any]]
     column_mapping: dict[str, str]
+    missing_value_mode: str
+    missing_value_overrides: list[dict[str, Any]]
     quality: dict[str, Any]
+    cleaning_audit: dict[str, Any]
     analysis_plan: dict[str, Any]
     computed_results: dict[str, Any]
     dashboard: dict[str, Any]
@@ -26,5 +29,5 @@ class AnalysisState(TypedDict, total=False):
     iteration: int
     max_iterations: int
     validation_errors: list[str]
+    agent_runs: Annotated[list[dict[str, Any]], operator.add]
     trace: Annotated[list[str], operator.add]
-

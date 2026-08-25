@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisAnswerSchema, dashboardSchema, healthSchema, workbookSchema } from "../lib/schemas";
+import { analysisAnswerSchema, customCalculationSchema, dashboardSchema, healthSchema, workbookSchema } from "../lib/schemas";
 
 describe("عقود Zod", () => {
   it("تقبل بيانات مصنف صحيحة", () => {
@@ -35,5 +35,14 @@ describe("عقود Zod", () => {
   it("تقبل إجابة بيّنة الموثقة", () => {
     const result = analysisAnswerSchema.parse({ answer: "الفئة الأعلى هي أ.", sources: ["المؤشرات المحسوبة"] });
     expect(result.sources).toHaveLength(1);
+  });
+
+  it("تقبل نتيجة حساب مخصص متحقق", () => {
+    const result = customCalculationSchema.parse({
+      name: "هامش الربح", expression: "الربح ÷ الإيرادات × 100", value: 20,
+      format: "percent", source_columns: ["الربح", "الإيرادات"],
+      verification: "تمت المطابقة", query: "SELECT ...",
+    });
+    expect(result.value).toBe(20);
   });
 });

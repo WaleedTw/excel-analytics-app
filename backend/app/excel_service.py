@@ -1,21 +1,17 @@
 import math
-import mimetypes
 import re
-import shutil
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import numpy as np
 import pandas as pd
-from fastapi import UploadFile
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries
 
-from app.config import MAX_COLUMNS, MAX_FILE_SIZE, MAX_ROWS, MAX_SHEETS, SAMPLE_DIR, UPLOAD_DIR
-from app.schemas import ColumnProfile, PreviewResponse, QualityReport, SheetInfo, WorkbookInfo
-from app.storage import save_file_record
+from app.config import MAX_COLUMNS, MAX_ROWS, MAX_SHEETS, SAMPLE_DIR, UPLOAD_DIR
+from app.data_cleaning import coerce_numeric_series, is_numeric_like
+from app.schemas import ColumnProfile, QualityReport, SheetInfo, WorkbookInfo
 
 ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -32,15 +28,18 @@ TIME_DIMENSION_TERMS = {
 }
 MEASURE_TERMS = {
     "الكمية", "الإيرادات", "الايرادات", "التكلفة", "الربح", "المبيعات",
-    "النسبة", "نسبة", "quantity", "revenue", "cost", "profit", "sales",
-    "amount", "value", "percentage", "percent", "rate", "margin",
+    "السعر", "سعر", "المبلغ", "إجمالي", "اجمالي", "الإجمالي", "الاجمالي",
+    "النسبة", "نسبة", "quantity", "revenue", "cost",
+    "profit", "sales", "price", "amount", "value", "percentage", "percent",
+    "rate", "margin",
 }
 DIMENSION_TERMS = {
     "المدينة", "المنطقة", "المنتج", "الفئة", "مندوب المبيعات", "المندوب",
     "الشركة", "الفرع", "city", "region", "product", "category", "salesperson",
-    "segment", "company", "branch", "brand", "channel", "country",
+    "العميل", "اسم العميل", "حالة الطلب", "الحالة", "segment", "company",
+    "customer", "status", "branch", "brand", "channel", "country",
 }
-IDENTIFIER_TERMS = {"id", "المعرف", "رقم", "code", "رمز"}
+IDENTIFIER_TERMS = {"id", "المعرف", "معرف", "رقم", "code", "رمز"}
 
 
 class FileValidationError(ValueError):
@@ -83,7 +82,7 @@ def inspect_xlsx(path: Path, original_name: str, mime_type: str, file_id: str) -
         columns = max_col if rows else 0
         if rows > MAX_ROWS or columns > MAX_COLUMNS:
             workbook.close()
-            raise FileValidationError("حجم ورقة العمل يتجاوز حدود الصفوف أو الأعمدة الآمنة.")
+            raise FileValidationError("حجم ورقة العمل يتجاوز حدود الصفوف أو العواميد الآمنة.")
         sheets.append(SheetInfo(name=worksheet.title, rows=rows, columns=columns, has_data=rows > 1 and columns > 0))
     workbook.close()
     if not any(sheet.has_data for sheet in sheets):
@@ -99,60 +98,32 @@ def inspect_xlsx(path: Path, original_name: str, mime_type: str, file_id: str) -
     )
 
 
-async def store_upload(upload: UploadFile) -> WorkbookInfo:
-    original = Path(upload.filename or "").name
-    if original != (upload.filename or "") or not original or not SAFE_NAME.match(original):
-        raise FileValidationError("اسم الملف غير آمن.")
-    if Path(original).suffix.lower() != ".xlsx":
-        raise FileValidationError("الامتداد المدعوم هو .xlsx فقط، ولا تُقبل الملفات المحتوية على وحدات ماكرو.")
-    mime_type = upload.content_type or mimetypes.guess_type(original)[0] or "application/octet-stream"
-    if mime_type not in ALLOWED_MIME_TYPES:
-        raise FileValidationError("نوع MIME للملف غير مدعوم.")
-    content = await upload.read(MAX_FILE_SIZE + 1)
-    if not content:
-        raise FileValidationError("الملف فارغ.")
-    if len(content) > MAX_FILE_SIZE:
-        raise FileValidationError("حجم الملف يتجاوز الحد المسموح.")
-    if content[:2] != b"PK":
-        raise FileValidationError("توقيع الملف لا يطابق ملف Excel حديثًا.")
-    file_id = uuid4().hex
-    safe_path = UPLOAD_DIR / f"{file_id}.xlsx"
-    safe_path.write_bytes(content)
-    info = inspect_xlsx(safe_path, original, mime_type, file_id)
-    save_file_record(info.model_dump())
-    return info
-
-
-def register_sample(kind: str) -> WorkbookInfo:
-    filenames = {"sales": "مبيعات_عربية_مرتبة.xlsx", "messy": "بيانات_غير_مرتبة.xlsx"}
-    if kind not in filenames:
-        raise FileValidationError("ملف التجربة غير معروف.")
-    source = SAMPLE_DIR / filenames[kind]
-    if not source.exists():
-        raise FileValidationError("ملف التجربة غير متاح.")
-    file_id = uuid4().hex
-    target = UPLOAD_DIR / f"{file_id}.xlsx"
-    shutil.copy2(source, target)
-    info = inspect_xlsx(target, filenames[kind], ALLOWED_MIME_TYPES.copy().pop(), file_id)
-    save_file_record(info.model_dump())
-    return info
-
-
-def file_path_for(file_id: str) -> Path:
-    if not re.fullmatch(r"[a-f0-9]{32}", file_id):
-        raise FileValidationError("معرف الملف غير صالح.")
-    path = UPLOAD_DIR / f"{file_id}.xlsx"
-    if not path.exists() or not _path_is_inside(path, UPLOAD_DIR):
-        raise FileValidationError("الملف غير موجود.")
-    return path
-
-
 def read_sheet(path: Path, sheet_name: str) -> pd.DataFrame:
     try:
         frame = pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
     except ValueError as exc:
         raise FileValidationError("ورقة العمل المطلوبة غير موجودة.") from exc
-    frame.columns = [str(column).strip() or f"عمود_{index + 1}" for index, column in enumerate(frame.columns)]
+    # pandas/openpyxl reads cached formula results. Some valid workbooks (for
+    # example files generated without Excel recalculation) contain formulas but
+    # no cached values, which otherwise makes a populated column look empty.
+    # Preserve only those formula strings for the conservative cleaning stage.
+    workbook = load_workbook(path, read_only=True, data_only=False, keep_links=False)
+    try:
+        worksheet = workbook[sheet_name]
+        formula_cells: list[tuple[int, int, str]] = []
+        for row_index, values in enumerate(
+            worksheet.iter_rows(min_row=2, max_row=len(frame) + 1, max_col=len(frame.columns), values_only=True)
+        ):
+            for column_index, value in enumerate(values):
+                if isinstance(value, str) and value.startswith("=") and pd.isna(frame.iat[row_index, column_index]):
+                    formula_cells.append((row_index, column_index, value))
+        for column_index in {item[1] for item in formula_cells}:
+            frame[frame.columns[column_index]] = frame.iloc[:, column_index].astype("object")
+        for row_index, column_index, value in formula_cells:
+            frame.iat[row_index, column_index] = value
+    finally:
+        workbook.close()
+    frame.columns = [str(column).strip() or f"عامود_{index + 1}" for index, column in enumerate(frame.columns)]
     # Excel cells containing only spaces look filled to pandas even though they are
     # empty to the user. Normalize them once so preview and quality counts agree.
     object_columns = frame.select_dtypes(include=["object", "string"]).columns
@@ -174,20 +145,32 @@ def infer_columns(frame: pd.DataFrame, mapping: dict[str, str] | None = None) ->
         is_time_dimension = lower in TIME_DIMENSION_TERMS or any(term in words for term in TIME_DIMENSION_TERMS)
         is_dimension_name = lower in DIMENSION_TERMS or any(term in words for term in DIMENSION_TERMS)
         is_measure_name = lower in MEASURE_TERMS or any(term in words for term in MEASURE_TERMS)
-        is_identifier_name = lower in IDENTIFIER_TERMS or lower.endswith("_id") or lower.endswith(" id")
-        if mapped in {"date", "تاريخ"} or pd.api.types.is_datetime64_any_dtype(series) or is_date_name:
+        is_identifier_name = lower in IDENTIFIER_TERMS or any(term in words for term in IDENTIFIER_TERMS) or lower.endswith("_id") or lower.endswith(" id")
+        numeric_like = is_numeric_like(series) if not pd.api.types.is_numeric_dtype(series) else True
+        empty_column = series.dropna().empty
+        if empty_column:
+            inferred_type, role = "unknown", "unknown"
+        elif mapped in {"date", "تاريخ"}:
             inferred_type, role = "date", "date"
-        elif mapped in {"dimension", "بُعد", "بعد"} or is_time_dimension or is_dimension_name:
+        elif mapped in {"dimension", "بُعد", "بعد"}:
             inferred_type, role = "category", "dimension"
-        elif mapped in {"identifier", "معرف"} or is_identifier_name:
+        elif mapped in {"identifier", "معرف"}:
             inferred_type, role = "text", "identifier"
-        elif mapped in {"measure", "مقياس"} or is_measure_name or pd.api.types.is_numeric_dtype(series):
+        elif mapped in {"measure", "مقياس"}:
+            inferred_type, role = "number", "measure"
+        elif pd.api.types.is_datetime64_any_dtype(series) or is_date_name:
+            inferred_type, role = "date", "date"
+        elif is_identifier_name:
+            inferred_type, role = "text", "identifier"
+        elif is_time_dimension or is_dimension_name:
+            inferred_type, role = "category", "dimension"
+        elif is_measure_name or numeric_like:
             inferred_type, role = "number", "measure"
         elif series.nunique(dropna=True) <= max(20, len(series) * 0.2):
             inferred_type, role = "category", "unknown"
         else:
             inferred_type, role = "text", "unknown"
-        ambiguous = role == "unknown" and column not in mapping
+        ambiguous = role == "unknown" and column not in mapping and not empty_column
         profiles.append(
             ColumnProfile(
                 name=column,
@@ -197,25 +180,16 @@ def infer_columns(frame: pd.DataFrame, mapping: dict[str, str] | None = None) ->
                 unique_count=int(series.nunique(dropna=True)),
                 sample_values=[_normalize_value(v) for v in series.dropna().head(3).tolist()],
                 ambiguous=ambiguous,
-                reason="لم يتطابق الاسم مع قاموس الدلالات المحلي." if ambiguous else "تم الاستدلال من الاسم ونوع القيم.",
+                reason=(
+                    "العامود فارغ بالكامل وسيُستبعد من نسخة التحليل."
+                    if empty_column else
+                    "لم يتطابق الاسم مع قاموس الدلالات المحلي."
+                    if ambiguous else
+                    "تم الاستدلال من الاسم ونوع القيم."
+                ),
             )
         )
     return profiles
-
-
-def preview_sheet(file_id: str, sheet_name: str, mapping: dict[str, str] | None = None) -> PreviewResponse:
-    frame = read_sheet(file_path_for(file_id), sheet_name)
-    rows = [
-        {str(key): _normalize_value(value) for key, value in row.items()}
-        for row in frame.head(50).to_dict(orient="records")
-    ]
-    return PreviewResponse(
-        file_id=file_id,
-        sheet_name=sheet_name,
-        columns=infer_columns(frame, mapping),
-        rows=rows,
-        total_rows=len(frame),
-    )
 
 
 def profile_quality(frame: pd.DataFrame, profiles: list[ColumnProfile]) -> QualityReport:
@@ -229,8 +203,8 @@ def profile_quality(frame: pd.DataFrame, profiles: list[ColumnProfile]) -> Quali
     for profile in profiles:
         series = frame[profile.name]
         if profile.semantic_role == "measure":
-            numeric = pd.to_numeric(series, errors="coerce")
-            invalid += int((series.notna() & numeric.isna()).sum())
+            numeric, _, invalid_count = coerce_numeric_series(series)
+            invalid += invalid_count
             clean = numeric.dropna()
             if len(clean) >= 4:
                 q1, q3 = clean.quantile([0.25, 0.75])

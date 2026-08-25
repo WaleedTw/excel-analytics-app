@@ -41,4 +41,16 @@ def test_full_sample_api_journey():
         answer = client.post(f"/api/v1/analyses/{analysis_id}/ask", json={"question": "ما أبرز نتيجة؟"})
         assert answer.status_code == 200
         assert answer.json()["answer"]
+        calculation = client.post(
+            f"/api/v1/analyses/{analysis_id}/calculations",
+            json={"instruction": "هامش الربح = الربح ÷ الإيرادات × 100"},
+        )
+        assert calculation.status_code == 200
+        assert calculation.json()["format"] == "percent"
+        assert "DuckDB" in calculation.json()["verification"]
+        assert {run["agent"] for run in result["agent_runs"]} == {
+            "cleaning_agent", "analysis_agent", "dashboard_agent",
+        }
+        assert result["cleaning_audit"]["output_rows"] <= result["cleaning_audit"]["input_rows"]
+        assert result["cleaning_audit"]["policy"]
         assert client.get(f"/api/v1/files/{workbook['file_id']}").status_code == 404
