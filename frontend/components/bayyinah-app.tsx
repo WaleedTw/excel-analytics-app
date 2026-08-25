@@ -49,6 +49,10 @@ const stageLabels: Record<Locale, Record<string, string>> = {
 
 const enNumber = (value: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
 const displayCell = (value: unknown) => value == null ? "—" : typeof value === "number" ? enNumber(value) : String(value);
+const missingTokens = new Set(["", "-", "—", "–", "na", "n/a", "nan", "null", "none", "غير متوفر", "غير متاح", "لا يوجد"]);
+const isMissingCell = (value: unknown) => value == null || (typeof value === "string" && missingTokens.has(value.trim().toLowerCase()));
+const looksLikeIdentifier = (name: string) => /(^|[\s_-])(id|code|ref|key|number|no)(?=$|[\s_-])|معرف|رقم\s*(الطلب|العملية|المنتج|العميل)?/i.test(name);
+const looksMonetary = (name: string) => /(price|sales|revenue|amount|cost|total|salary|سعر|مبيعات|إيراد|ايراد|مبلغ|تكلفة|إجمالي|اجمالي)/i.test(name);
 const formatMetric = (value: number | string, format: string, currency = "SAR") => {
   if (typeof value !== "number") return value;
   if (format === "currency") return new Intl.NumberFormat("en-US", { style: "currency", currency, currencyDisplay: "code", maximumFractionDigits: 0 }).format(value);
@@ -166,7 +170,67 @@ function CleaningNotice({ audit, proposal = false }: { audit: CleaningAuditView;
 
 function PreviewPage({ preview, analyze }: { preview: Preview; analyze: (mode: "recommended" | "manual", overrides: MissingValueOverride[]) => void }) {
   const { t } = useLanguage();
-  const audit = preview.cleaning_audit;
+  // Older backend deployments may still return column null counts while
+  // omitting cleaning_audit from PreviewResponse. Reconstruct a conservative
+  // review audit from the actual preview rows so missing-value decisions never
+  // disappear silently. The backend audit remains authoritative when present.
+  const fallbackAudit = useMemo<CleaningAuditView | null>(() => {
+    const reportedMissing = preview.columns.reduce((sum, column) => sum + column.null_count, 0);
+    const auditHasLocations = preview.cleaning_audit
+      ? Object.values(preview.cleaning_audit.missing_locations).some((rows) => rows.length > 0)
+      : false;
+    if (preview.cleaning_audit && (reportedMissing === 0 || auditHasLocations)) return null;
+    const outputSourceRows = preview.rows.map((_, index) => index + 2);
+    const missingLocations = Object.fromEntries(preview.columns.map((column) => {
+      const sourceRows = preview.rows.flatMap((row, index) => isMissingCell(row[column.name]) ? [outputSourceRows[index]] : []);
+      return [column.name, sourceRows] as const;
+    }).filter(([, sourceRows]) => sourceRows.length > 0));
+    if (Object.keys(missingLocations).length === 0) return null;
+
+    const imputationActions: CleaningAuditView["imputation_actions"] = preview.columns.flatMap((column) => {
+      const sourceRows = missingLocations[column.name] ?? [];
+      if (sourceRows.length === 0) return [];
+      const uncertain = column.semantic_role === "date" || column.semantic_role === "identifier" || looksLikeIdentifier(column.name);
+      let strategy: CleaningAuditView["imputation_actions"][number]["strategy"] = "retained";
+      let fillValue: string | number | null = null;
+      let explanation = t("هذه القيمة تحتاج إدخالًا يدويًا موثوقًا أو حذف الصف كاملًا.", "This value needs trusted manual input or deletion of the entire row.");
+      if (!uncertain && column.semantic_role === "measure") {
+        strategy = looksMonetary(column.name) ? "mean" : "median";
+        explanation = strategy === "mean"
+          ? t("ستُعالج القيم الرقمية المالية بمتوسط القيم الصحيحة في العامود.", "Missing monetary values will use the mean of valid values in the column.")
+          : t("ستُعالج القيم الرقمية بوسيط القيم الصحيحة لتقليل أثر القيم الشاذة.", "Missing numeric values will use the median of valid values to limit outlier impact.");
+      } else if (!uncertain && column.semantic_role === "dimension") {
+        strategy = "label";
+        fillValue = t("غير محدد", "Unspecified");
+        explanation = t("ستُحفظ القيمة الوصفية الناقصة تحت وسم واضح دون اختراع معلومة.", "The missing descriptive value will use an explicit label without inventing data.");
+      }
+      return [{ column: column.name, count: sourceRows.length, strategy, fill_value: fillValue, source_rows: sourceRows, explanation }];
+    });
+    const missingValuesBefore = Object.fromEntries(Object.entries(missingLocations).map(([column, rows]) => [column, rows.length]));
+    const remainingMissingValues = Object.fromEntries(imputationActions.filter((action) => action.strategy === "retained").map((action) => [action.column, action.count]));
+    return {
+      input_rows: preview.total_rows,
+      output_rows: preview.total_rows,
+      excluded_summary_rows: [],
+      numeric_conversions: 0,
+      date_conversions: 0,
+      normalized_text_cells: 0,
+      invalid_numeric_cells: 0,
+      invalid_date_cells: 0,
+      excluded_empty_columns: [],
+      formula_calculations: 0,
+      missing_value_mode: "recommended",
+      missing_values_before: missingValuesBefore,
+      missing_locations: missingLocations,
+      output_source_rows: outputSourceRows,
+      remaining_missing_values: remainingMissingValues,
+      imputation_actions: imputationActions,
+      removed_duplicate_rows: [],
+      user_deleted_rows: [],
+      policy: t("تقرير احتياطي محافظ بُني من صفوف المعاينة لأن الخادم لم يرسل سجل التنظيف.", "A conservative fallback audit built from preview rows because the server omitted the cleaning audit."),
+    };
+  }, [preview, t]);
+  const audit = fallbackAudit ?? preview.cleaning_audit;
   const [mode,setMode] = useState<"recommended"|"manual">("recommended");
   const [manualValues,setManualValues] = useState<Record<string,string>>({});
   const [cellDecisions,setCellDecisions] = useState<Record<string,"replace"|"delete_row">>({});
@@ -203,7 +267,7 @@ function PreviewPage({ preview, analyze }: { preview: Preview; analyze: (mode: "
       </div>}
     </section>}
     <div className="profile-row">{preview.columns.map((column) => <article key={column.name} className={column.ambiguous ? "warn" : ""}><span>{column.semantic_role === "measure" ? t("مقياس", "Measure") : column.semantic_role === "date" ? t("تاريخ", "Date") : column.semantic_role === "dimension" ? t("بُعد", "Dimension") : column.semantic_role === "identifier" ? t("معرّف", "Identifier") : column.null_count === preview.total_rows ? t("فارغ بالكامل", "Completely empty") : t("يحتاج توضيحًا", "Needs clarification")}</span><b>{column.name}</b><small><span dir="ltr">{enNumber(column.unique_count)}</span> {t("قيمة فريدة", "unique values")} · {column.null_count === 0 ? t("لا توجد قيم مفقودة", "No missing values") : <><span dir="ltr">{enNumber(column.null_count)}</span> {t("قيمة مفقودة", "missing values")}</>}</small></article>)}</div>
-    <section className="preview-table" aria-label={t("جميع بيانات الورقة", "All worksheet data")}><table><thead><tr>{preview.columns.map((column) => <th key={column.name}>{column.name}<small>{column.inferred_type}</small></th>)}</tr></thead><tbody>{preview.rows.map((row, index) => {const sourceRow=audit?.output_source_rows[index]??index+2;const rowDeleted=deletedRows.has(sourceRow);return <tr className={rowDeleted?"row-marked-for-deletion":undefined} key={index}>{preview.columns.map((column) => {const affected=audit?.missing_locations[column.name]?.includes(sourceRow);const key=cellKey(column.name,sourceRow);const manualValue=manualValues[key];const replaced=Boolean(affected&&!rowDeleted&&cellDecisions[key]==="replace"&&manualValue?.trim());const value=replaced?manualValue:affected&&mode==="manual"?null:row[column.name];const cellClass=rowDeleted?"deleted-cell":replaced?"repaired-cell manual":affected?"repaired-cell proposed":undefined;const title=rowDeleted?t(`سيُحذف صف Excel ${sourceRow} من نسخة التحليل`, `Excel row ${sourceRow} will be removed from the analysis copy`):replaced?t(`قيمة يدوية — صف Excel ${sourceRow}`, `Manual value — Excel row ${sourceRow}`):affected?t(`قيمة معالجة أو بانتظار قرار — صف Excel ${sourceRow}`, `Treated value or pending decision — Excel row ${sourceRow}`):undefined;return <td className={cellClass} title={title} key={column.name}>{displayCell(value)}</td>})}</tr>})}</tbody></table></section>
+    <section className="preview-table" aria-label={t("جميع بيانات الورقة", "All worksheet data")}><table><thead><tr>{preview.columns.map((column) => <th key={column.name}>{column.name}<small>{column.inferred_type}</small></th>)}</tr></thead><tbody>{preview.rows.map((row, index) => {const sourceRow=audit?.output_source_rows[index]??index+2;const rowDeleted=deletedRows.has(sourceRow);return <tr className={rowDeleted?"row-marked-for-deletion":undefined} key={index}>{preview.columns.map((column) => {const affected=audit?.missing_locations[column.name]?.includes(sourceRow);const key=cellKey(column.name,sourceRow);const manualValue=manualValues[key];const proposedValue=actionFor(column.name,sourceRow)?.fill_value;const replaced=Boolean(affected&&!rowDeleted&&cellDecisions[key]==="replace"&&manualValue?.trim());const value=replaced?manualValue:affected&&mode==="manual"?null:affected&&proposedValue!=null?proposedValue:row[column.name];const cellClass=rowDeleted?"deleted-cell":replaced?"repaired-cell manual":affected?"repaired-cell proposed":undefined;const title=rowDeleted?t(`سيُحذف صف Excel ${sourceRow} من نسخة التحليل`, `Excel row ${sourceRow} will be removed from the analysis copy`):replaced?t(`قيمة يدوية — صف Excel ${sourceRow}`, `Manual value — Excel row ${sourceRow}`):affected?t(`قيمة معالجة أو بانتظار قرار — صف Excel ${sourceRow}`, `Treated value or pending decision — Excel row ${sourceRow}`):undefined;return <td className={cellClass} title={title} key={column.name}>{displayCell(value)}</td>})}</tr>})}</tbody></table></section>
   </main>;
 }
 
