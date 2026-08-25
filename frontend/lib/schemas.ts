@@ -63,7 +63,9 @@ export const analysisSchema = z.object({
     score: z.number(), notes: z.array(z.string()),
   }).nullable(), cleaning_audit: cleaningAuditSchema.nullable().default(null), trace: z.array(z.string()), error: z.string().nullable(),
   agent_runs: z.array(z.object({
-    agent: z.enum(["cleaning_agent", "analysis_agent", "dashboard_agent"]),
+    // Keep the client compatible with older deployments that used aliases.
+    // The UI normalizes the value to one of the three canonical agent ids.
+    agent: z.string(),
     label: z.string(), responsibility: z.string(), status: z.enum(["completed", "failed"]),
     summary: z.string(), artifacts: z.array(z.string()),
   })).default([]),
