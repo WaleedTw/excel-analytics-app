@@ -38,9 +38,9 @@ const cleaningAuditSchema = z.object({
   output_source_rows: z.array(z.number()).default([]),
   remaining_missing_values: z.record(z.string(), z.number()).default({}),
   imputation_actions: z.array(z.object({
-    column: z.string(), count: z.number(), strategy: z.enum(["derived", "sequential", "mean", "median", "label", "manual", "retained"]),
+    column: z.string(), count: z.number(), strategy: z.enum(["derived", "sequential", "mean", "median", "label", "manual", "delete_row", "retained"]),
     fill_value: z.union([z.string(), z.number()]).nullable(), source_rows: z.array(z.number()).default([]), explanation: z.string(),
-  })).default([]), removed_duplicate_rows: z.array(z.number()).default([]),
+  })).default([]), removed_duplicate_rows: z.array(z.number()).default([]), user_deleted_rows: z.array(z.number()).default([]),
   policy: z.string(),
 });
 export const previewSchema = z.object({

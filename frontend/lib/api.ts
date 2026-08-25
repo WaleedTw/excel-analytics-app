@@ -24,7 +24,12 @@ export async function loadSample(kind: "sales" | "messy", locale: Locale) {
 export async function getPreview(fileId: string, sheet: string, locale: Locale) {
   return json(await fetch(withLocale(`${API}/files/${fileId}/preview?sheet=${encodeURIComponent(sheet)}`, locale)), previewSchema, locale);
 }
-export type MissingValueOverride = { column: string; source_row: number; value: string };
+export type MissingValueOverride = {
+  column: string;
+  source_row: number;
+  action: "replace" | "delete_row";
+  value?: string;
+};
 
 export async function startAnalysis(
   fileId: string,
