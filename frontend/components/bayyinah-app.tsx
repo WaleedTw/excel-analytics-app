@@ -103,7 +103,7 @@ function SiteFooter({ compact = false, go }: { compact?: boolean; go: (view: Vie
   const { t } = useLanguage();
   return <footer className={`site-footer ${compact ? "results-footer" : ""}`}>
     <Logo onClick={() => go("home")}/>
-    <p><span>{t("تطوير", "Built by")}</span> <strong>{t("وليد التويجري", "Waleed Altuwaijri")}</strong><small>{t("© 2026 جميع الحقوق محفوظة.", "© 2026 All rights reserved.")}</small></p>
+    <p><strong>{t("وليد التويجري", "Waleed Altuwaijri")}</strong><small>{t("© 2026 جميع الحقوق محفوظة.", "© 2026 All rights reserved.")}</small></p>
     <nav className="creator-links" aria-label={t("روابط وليد التويجري", "Waleed Altuwaijri links")}>
       <a href="https://www.linkedin.com/in/waleed-altuwaijri-803273353" target="_blank" rel="noreferrer noopener" aria-label="LinkedIn"><Linkedin/><span>LinkedIn</span></a>
       <a href="https://github.com/WaleedTw" target="_blank" rel="noreferrer noopener" aria-label="GitHub"><Github/><span>GitHub</span></a>

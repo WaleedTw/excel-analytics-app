@@ -5,7 +5,17 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001/api/v1";
 
 async function json<T>(response: Response, parser: { parse: (value: unknown) => T }, locale: Locale): Promise<T> {
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof body.detail === "string" ? body.detail : locale === "ar" ? "تعذر إكمال الطلب." : "The request could not be completed.");
+  if (!response.ok) {
+    const detail = (body as { detail?: unknown }).detail;
+    const validationMessage = Array.isArray(detail)
+      ? detail.map((item) => typeof item === "object" && item !== null && "msg" in item ? String(item.msg) : "").filter(Boolean).join(" · ")
+      : "";
+    throw new Error(
+      typeof detail === "string"
+        ? detail
+        : validationMessage || (locale === "ar" ? "تعذر إكمال الطلب." : "The request could not be completed."),
+    );
+  }
   return parser.parse(body);
 }
 
