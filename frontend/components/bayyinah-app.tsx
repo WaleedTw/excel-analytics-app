@@ -103,10 +103,9 @@ function ForwardChevron() {
   return direction === "rtl" ? <ChevronLeft/> : <ChevronRight/>;
 }
 
-function SiteFooter({ compact = false, go }: { compact?: boolean; go: (view: View) => void }) {
+function SiteFooter({ compact = false }: { compact?: boolean }) {
   const { t } = useLanguage();
   return <footer className={`site-footer ${compact ? "results-footer" : ""}`}>
-    <Logo onClick={() => go("home")}/>
     <p><small>{t("© 2026 جميع الحقوق محفوظة.", "© 2026 All rights reserved.")}</small></p>
   </footer>;
 }
@@ -407,7 +406,7 @@ function DashboardView({ analysis, go }: { analysis: Analysis; go: (view: View) 
     <section className="charts-grid">{dashboard.charts.slice(0,4).map((chart)=><ChartCard chart={chart} tableSpec={dashboard.tables[0]} dimensions={dashboard.dimensions} measures={dashboard.measures} selection={selection} onSelectionChange={setSelection} key={chart.id}/>)}</section>
     <section className="insight-grid quality-only"><article className="quality-card"><div className="score-ring" style={ringStyle}><span><b dir="ltr">{score}</b><small>{t("من 100", "out of 100")}</small></span></div><div><span className="section-kicker">{t("جودة البيانات", "Data quality")}</span><h2>{score>=85?t("موثوقة لاتخاذ القرار", "Reliable for decision-making"):t("تحتاج إلى مراجعة", "Needs review")}</h2><p>{analysis.quality?.notes[0]}</p></div></article></section>
     {dashboard.filters.length>0&&<section className="filter-bar"><div><Search/><span><b>{t("تصفية جدول البيانات", "Filter data table")}</b><small>{t("تُطبق الخيارات على السجلات أدناه", "Options apply to the records below")}</small></span></div>{dashboard.filters.map((filter)=><label key={filter.column}>{filter.label}<select value={filters[filter.column]??""} onChange={(event)=>setFilters({...filters,[filter.column]:event.target.value})}><option value="">{t("الكل", "All")}</option>{filter.values.map((value)=><option key={value}>{value}</option>)}</select></label>)}</section>}
-    <DataTable tableSpec={dashboard.tables[0]} filters={filters} cleaningAudit={analysis.cleaning_audit}/><SiteFooter compact go={go}/></section></main>;
+    <DataTable tableSpec={dashboard.tables[0]} filters={filters} cleaningAudit={analysis.cleaning_audit}/><SiteFooter compact/></section></main>;
 }
 
 function InsightsPage({ analysis, go }: { analysis: Analysis; go: (view: View) => void }) {
@@ -421,7 +420,7 @@ function InsightsPage({ analysis, go }: { analysis: Analysis; go: (view: View) =
   const groupedInsights = new Set(groups.flatMap((group)=>group.insights));
   const otherInsights = dashboard.detailed_insights.filter((insight)=>!groupedInsights.has(insight));
   const visibleGroups = otherInsights.length?[...groups,{id:"other",label:t("رؤى أخرى", "Other insights"),icon:<Lightbulb/>,terms:[],insights:otherInsights}]:groups;
-  return <main className="dashboard-page insights-dashboard"><DashboardNav active="insights" go={go}/><section className="dash-main insights-main"><div className="flow-heading"><span className="section-kicker">{enNumber(dashboard.detailed_insights.length)} {t("رؤى موثقة", "verified insights")}</span><h1>{t("تحليــــل يمكن تتبّعه", "Traceable analysis")}</h1><p>{t("كل استنتاج رقمي مرتبط بنتيجة محسوبة وموثقة.", "Every numeric conclusion is linked to a calculated and verified result.")}</p></div><AskBayyinah key={locale} analysisId={analysis.analysis_id} dashboard={dashboard}/><div className="insight-groups">{visibleGroups.filter((group)=>group.insights.length>0).map((group)=><section className={`insight-group ${group.id}`} key={group.id}><header><span>{group.icon}</span><h2>{group.label}</h2><b dir="ltr">{enNumber(group.insights.length)}</b></header><div className="details-list">{group.insights.map((insight,index)=><article key={`${insight.title}-${index}`}><b>{String(index+1).padStart(2,"0")}</b><div><h3>{insight.title}</h3><p>{insight.text}</p><small><ShieldCheck/> {insight.result_refs.join(" · ")}</small></div></article>)}</div></section>)}</div><SiteFooter compact go={go}/></section></main>;
+  return <main className="dashboard-page insights-dashboard"><DashboardNav active="insights" go={go}/><section className="dash-main insights-main"><div className="flow-heading"><span className="section-kicker">{enNumber(dashboard.detailed_insights.length)} {t("رؤى موثقة", "verified insights")}</span><h1>{t("تحليــــل يمكن تتبّعه", "Traceable analysis")}</h1><p>{t("كل استنتاج رقمي مرتبط بنتيجة محسوبة وموثقة.", "Every numeric conclusion is linked to a calculated and verified result.")}</p></div><AskBayyinah key={locale} analysisId={analysis.analysis_id} dashboard={dashboard}/><div className="insight-groups">{visibleGroups.filter((group)=>group.insights.length>0).map((group)=><section className={`insight-group ${group.id}`} key={group.id}><header><span>{group.icon}</span><h2>{group.label}</h2><b dir="ltr">{enNumber(group.insights.length)}</b></header><div className="details-list">{group.insights.map((insight,index)=><article key={`${insight.title}-${index}`}><b>{String(index+1).padStart(2,"0")}</b><div><h3>{insight.title}</h3><p>{insight.text}</p><small><ShieldCheck/> {insight.result_refs.join(" · ")}</small></div></article>)}</div></section>)}</div><SiteFooter compact/></section></main>;
 }
 
 function BayyinahAppContent() {
@@ -500,7 +499,7 @@ function BayyinahAppContent() {
   };
   const showLlmNotice = health && (health.mode === "mock" || !health.llm_ready);
   const inResults = view === "dashboard" || view === "insights";
-  return <div className={`app-shell ${view === "home" ? "home-active" : ""}`}>{!inResults && <Header view={view} go={go}/>} {!inResults && showLlmNotice && <div className={`llm-notice ${health.mode}`}><CircleAlert/><div><b>{health.mode === "mock" ? t("وضع الاختبار مفعّل", "Test mode is active") : t("خدمة الذكاء الاصطناعي تحتاج إعدادًا", "AI service requires configuration")}</b><span>{health.detail}</span></div></div>} {inResults ? renderContent() : <div className="view-stage" key={view}>{renderContent()}</div>} {!inResults && <SiteFooter go={go}/>}</div>;
+  return <div className={`app-shell ${view === "home" ? "home-active" : ""}`}>{!inResults && <Header view={view} go={go}/>} {!inResults && showLlmNotice && <div className={`llm-notice ${health.mode}`}><CircleAlert/><div><b>{health.mode === "mock" ? t("وضع الاختبار مفعّل", "Test mode is active") : t("خدمة الذكاء الاصطناعي تحتاج إعدادًا", "AI service requires configuration")}</b><span>{health.detail}</span></div></div>} {inResults ? renderContent() : <div className="view-stage" key={view}>{renderContent()}</div>} {!inResults && <SiteFooter/>}</div>;
 }
 
 export function BayyinahApp() {
