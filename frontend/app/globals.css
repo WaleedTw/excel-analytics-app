@@ -1024,15 +1024,10 @@ body,body *,button,input,select,textarea,summary{
 /* Result pages intentionally inherit the language selected before analysis. */
 .dashboard-page .language-toggle,.insights-dashboard .language-toggle{display:none!important}
 
-.site-footer p{display:grid;gap:2px;text-align:center}
-.site-footer p>strong{font-size:15px;font-weight:900;line-height:1.35;color:var(--ink);letter-spacing:.01em}
+.site-footer{justify-content:center;gap:18px}
+.site-footer p{display:grid;gap:2px;margin:0;text-align:center}
 .site-footer p>small{font-size:9px;color:var(--muted)}
-.home-active .site-footer p>strong{color:#fff;text-shadow:0 1px 18px rgba(97,226,210,.18)}
 .home-active .site-footer p>small{color:#a9bfbc}
-.creator-links{display:flex;align-items:center;gap:8px}
-.creator-links a{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:7px 10px;border:1px solid var(--line);border-radius:999px;color:inherit;text-decoration:none;transition:color .18s,border-color .18s,background .18s,transform .18s}
-.creator-links a:hover,.creator-links a:focus-visible{color:var(--teal-dark);border-color:#8bd4cb;background:#eaf8f5;outline:0;transform:translateY(-1px)}
-.creator-links svg{width:14px;height:14px}
 .results-footer{width:100%;max-width:none!important;margin:46px 0 0!important;padding:24px 0 4px!important;background:transparent!important;border-top:1px solid rgba(16,67,65,.13)!important;position:relative;z-index:2}
 .results-footer .logo strong{font-size:25px}
 
@@ -1068,9 +1063,9 @@ html[dir="ltr"] .trace-disclosure li:not(:last-child)::after{right:auto;left:12p
 html[dir="ltr"] .chart-picker-panel{right:auto;left:0;transform-origin:top left}
 html[dir="ltr"] .chart-picker-options{padding:8px 9px 8px 14px}
 html[dir="ltr"] .metric-value{text-align:left}
-html[dir="ltr"] .home-apple .hero-copy{text-align:left}
+html[dir="ltr"] .home-apple .hero-copy{text-align:center}
 html[dir="ltr"] .home-apple .hero-actions,
-html[dir="ltr"] .home-apple .trust-row{justify-content:flex-start}
+html[dir="ltr"] .home-apple .trust-row{justify-content:center}
 
 @media(max-width:1180px) and (min-width:681px){
   html[dir="ltr"] .dashboard-page{padding-right:0!important;padding-left:88px!important}
@@ -1094,13 +1089,14 @@ html[dir="ltr"] .home-apple .trust-row{justify-content:flex-start}
     border-color:rgba(255,255,255,.14);
     box-shadow:0 8px 24px rgba(0,0,0,.18);
   }
-  .site-footer{display:grid;grid-template-columns:auto 1fr;gap:12px}
-  .site-footer p{display:grid!important;text-align:start;margin:0}
-  .site-footer .creator-links{grid-column:1/3;justify-content:center}
+  .site-footer{display:grid;grid-template-columns:auto auto;justify-content:center;gap:12px}
+  .site-footer p{display:grid!important;text-align:center;margin:0}
   .results-footer{padding-bottom:72px!important}
   html[dir="ltr"] .dashboard-page{padding-right:0!important;padding-left:0!important}
   html[dir="ltr"] .dash-sidebar{right:0!important;left:0!important;border-right:0!important}
   html[dir="ltr"] .data-table-card th:first-child,
   html[dir="ltr"] .data-table-card td:first-child{right:auto;left:0}
-  html[dir="ltr"] .home-apple .hero-copy{text-align:left!important}
+  html[dir="ltr"] .home-apple .hero-copy{text-align:center!important}
+  html[dir="ltr"] .home-apple .hero-actions,
+  html[dir="ltr"] .home-apple .trust-row{justify-content:center!important}
 }

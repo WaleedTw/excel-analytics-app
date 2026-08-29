@@ -3,7 +3,7 @@
 import { ChangeEvent, CSSProperties, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowLeft, ArrowRight, BarChart3, Bot, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert,
-  Clock3, Database, Github, Globe2, Layers3, LayoutDashboard, Lightbulb, Linkedin, Loader2, MessageCircleQuestion, Search,
+  Clock3, Database, Globe2, Layers3, LayoutDashboard, Lightbulb, Loader2, MessageCircleQuestion, Search,
   PencilLine, Send, ShieldCheck, Sparkles, Trash2, TrendingUp, Upload, WandSparkles, X,
 } from "lucide-react";
 import {
@@ -107,11 +107,7 @@ function SiteFooter({ compact = false, go }: { compact?: boolean; go: (view: Vie
   const { t } = useLanguage();
   return <footer className={`site-footer ${compact ? "results-footer" : ""}`}>
     <Logo onClick={() => go("home")}/>
-    <p><strong>{t("وليد التويجري", "Waleed Altuwaijri")}</strong><small>{t("© 2026 جميع الحقوق محفوظة.", "© 2026 All rights reserved.")}</small></p>
-    <nav className="creator-links" aria-label={t("روابط وليد التويجري", "Waleed Altuwaijri links")}>
-      <a href="https://www.linkedin.com/in/waleed-altuwaijri-803273353" target="_blank" rel="noreferrer noopener" aria-label="LinkedIn"><Linkedin/><span>LinkedIn</span></a>
-      <a href="https://github.com/WaleedTw" target="_blank" rel="noreferrer noopener" aria-label="GitHub"><Github/><span>GitHub</span></a>
-    </nav>
+    <p><small>{t("© 2026 جميع الحقوق محفوظة.", "© 2026 All rights reserved.")}</small></p>
   </footer>;
 }
 
