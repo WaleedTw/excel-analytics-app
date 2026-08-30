@@ -1,4 +1,4 @@
-# Bayyinah | بيّنة
+# Bayyinah 
 
 Bayyinah is a  multi-agent web application that transforms Excel and CSV files into clear, traceable analytics and interactive dashboards.
 
