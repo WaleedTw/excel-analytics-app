@@ -1,54 +1,46 @@
-حزمة التحديث الثاني لمشروع بيّنة
+# Bayyinah | بيّنة
 
-طريقة الاستخدام:
-1) افتح ملف TXT من هذه الحزمة.
-2) ابحث عن الملف الأصلي حسب المسار الموضح أدناه داخل Visual Studio Code.
-3) احذف محتوى الملف الأصلي كاملًا.
-4) الصق محتوى ملف TXT كاملًا ثم احفظ بـ Ctrl+S.
-5) كرر العملية لجميع الملفات.
+Bayyinah is a bilingual, multi-agent web application that transforms Excel and CSV files into clear, traceable analytics and interactive dashboards.
 
-مطابقة أسماء ملفات TXT مع مسارات المشروع:
+بيّنة منصة ثنائية اللغة تحوّل ملفات Excel وCSV إلى تحليلات واضحة ولوحات تفاعلية بأرقام قابلة للتتبّع.
 
-backend__app__agent.py.txt
-=> backend/app/agent.py
+## Live Demo
 
-backend__app__analytics.py.txt
-=> backend/app/analytics.py
+[Open Bayyinah](https://excel-analytics-app.vercel.app/)
 
-backend__app__main.py.txt
-=> backend/app/main.py
+## Key Features
 
-backend__app__schemas.py.txt
-=> backend/app/schemas.py
+- Upload and inspect XLSX or CSV files.
+- Detect missing values and choose automatic treatment, manual entry, or row deletion.
+- Generate verified KPIs, charts, tables, and detailed insights.
+- Ask questions about the analyzed dataset in natural language.
+- Switch between Arabic and English.
+- Keep calculations deterministic and traceable instead of relying on the language model for arithmetic.
 
-backend__app__service.py.txt
-=> backend/app/service.py
+## Multi-Agent Workflow
 
-backend__tests__test_api.py.txt
-=> backend/tests/test_api.py
+1. **Data Cleaning Agent** — validates structure, profiles columns, and handles data-quality issues.
+2. **Analysis & Calculation Agent** — builds the analysis plan and computes verified results.
+3. **Dashboard & Insights Agent** — validates the output and prepares charts, tables, and insights.
 
-frontend__app__globals.css.txt
-=> frontend/app/globals.css
+```text
+XLSX / CSV → Data Loader → Cleaning Agent → Analysis Agent → Dashboard Agent → Interactive Dashboard
+```
 
-frontend__components__bayyinah-app.tsx.txt
-=> frontend/components/bayyinah-app.tsx
+## Tech Stack
 
-frontend__components__chart-card.tsx.txt
-=> frontend/components/chart-card.tsx
+- **Frontend:** Next.js, React, TypeScript, Zod, ECharts
+- **Backend:** FastAPI, Python, Pandas, DuckDB, Pydantic
+- **AI Workflow:** LangGraph with Groq or Ollama
+- **Deployment:** Vercel and PythonAnywhere
 
-frontend__lib__api.ts.txt
-=> frontend/lib/api.ts
+## Repository Structure
 
-frontend__lib__schemas.ts.txt
-=> frontend/lib/schemas.ts
+```text
+frontend/   Next.js user interface
+backend/    FastAPI API and multi-agent workflow
+samples/    Sample datasets for testing
+scripts/    Development and validation utilities
+```
 
-frontend__tests__schemas.test.ts.txt
-=> frontend/tests/schemas.test.ts
-
-بعد الاستبدال محليًا:
-- أوقف الفرونت والباك إن كانا يعملان.
-- شغّل الباكند من جديد.
-- شغّل الفرونت من جديد.
-- نفّذ تحليلًا جديدًا؛ النتائج القديمة لا تحتوي البنية الجديدة.
-
-مهم: لا تضع مفتاح GROQ_API_KEY داخل أي ملف مرفوع إلى GitHub.
+> No real API keys or uploaded user datasets are stored in this repository.
